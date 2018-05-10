@@ -34,7 +34,8 @@
 #define MAX_PORT 64738
 
 #define LOCAL 1
-#define REMOTE 2
+#define REMOTE_C 2
+#define REMOTE_S 3
 
 // messages
 #define E_SOCKET   "[error] socket"
@@ -56,21 +57,22 @@
 #define I_IP          "[invalid] ip address\n"
 #define I_PORT        "[invalid] port\n"
 
-typedef struct{
+typedef struct s_message {
     int operation;
     int region;
     char message[MSG_SIZE];
 }message_t;
 
-typedef struct s_remote {
-    int fd;
-    char sin_addr[20];
-} remote;
-
-typedef struct s_client_fd {
+typedef struct s_client {
     int fd;
     int type;
-} client_fd;
+    char sin_addr[20];
+}client_t;
+
+typedef struct s_replicate {
+    client_t client;
+    char message[sizeof(message_t)];
+}replicate_t;
 
 struct tm *tm_struct;
 

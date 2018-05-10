@@ -2,7 +2,7 @@
 #define NAME "\n***CLIPBOARD***\n\n"
 
 /* Function prototypes */
-void update_client_fds(client_fd client, int operation);
+void update_client_fds(client_t client, int operation);
 void verifyInputArguments(int argc, char *argv[]);
 void connect_server(char *ipAddress, int port);
 int isValidIpAddress(char *ipAddress);
@@ -18,23 +18,35 @@ void* accept_remote_client_handler(void *args);
 void* accept_local_client_handler(void *args);
 void* remote_thread_handler(void *args);
 void* local_thread_handler(void *args);
+void* replicate_copy_cmd(void *args);
 
 // Sigaction handlers prototypes
 void ctrl_c_callback_handler(int signum);
 
 /* Globals */
-pthread_mutex_t mutex_fd       = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_cpy_l_fd = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_cpy_r_fd = PTHREAD_MUTEX_INITIALIZER;
+//mutex
+pthread_mutex_t mutex_nr_user    = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_nr_threads = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_cpy_l_fd   = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_cpy_r_fd   = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_replicate  = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_terminate  = PTHREAD_MUTEX_INITIALIZER;
+
+//cond. variable
+pthread_cond_t data_cond = PTHREAD_COND_INITIALIZER;
+
+//rwlock
 pthread_rwlock_t rwlock_clip[NREGIONS];
 
 // vulnerable to race condition
 message_t clipboard[NREGIONS];
-client_fd *all_client_fd;
+client_t *all_client_fd;
+int nr_users = 0;
 int nr_threads = 0;
 
 // not vulnerable
 int remote_connection = 0, l_sock_fd, r_out_sock_fd, r_in_sock_fd;
+client_t remote;
 
 int main(int argc, char* argv[]){
     pthread_t thread_id;
@@ -50,26 +62,37 @@ int main(int argc, char* argv[]){
     if(pthread_create(&thread_id, NULL, accept_remote_client_handler, NULL) != 0) // thread to handle accept remote clients
         p_error(E_T_CREATE);
     
-    while(nr_threads != 2);
+    if(remote_connection)
+        while(nr_threads != 3);
+    else
+        while(nr_threads != 2);
+    
     printf("[log] thread main: threadID:%lu\n\t- all set!\n\n", pthread_self());
     
-    while(1){sleep(1);} //falta remover isto
+    pthread_mutex_lock(&mutex_terminate);
+    pthread_cond_wait(&data_cond, &mutex_terminate);
+    pthread_mutex_unlock(&mutex_terminate);
+    
+    secure_exit(0);
     exit(0); // never happens
 }
 
 void* local_thread_handler(void* args){
-    client_fd client;
-    client.fd = *((int *) args);
+    client_t client = *((client_t *) args);
     pthread_mutex_unlock(&mutex_cpy_l_fd);
     
-    client.type = LOCAL;
-    
     char message[sizeof(message_t)];
+    replicate_t replicate;
+    pthread_t thread_id;
     message_t m1;
     
-    pthread_mutex_lock(&mutex_fd);
+    pthread_mutex_lock(&mutex_nr_threads);
+    nr_threads++;
+    pthread_mutex_unlock(&mutex_nr_threads);
+    
+    pthread_mutex_lock(&mutex_nr_user);
     update_client_fds(client, ADD_FD);
-    pthread_mutex_unlock(&mutex_fd);
+    pthread_mutex_unlock(&mutex_nr_user);
     
     printf("[log] thread: threadID=%lu\n\t- was created to handle communication with the new local client\n\n", pthread_self());
 
@@ -87,17 +110,17 @@ void* local_thread_handler(void* args){
             pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
             printf("\t- recv[l]: region=%d | message=%s\n", m1.region, clipboard[m1.region].message);
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
-
-            if(remote_connection) {
-                /* send received data to the remote backup */
-                if(write(r_out_sock_fd, message, sizeof clipboard[m1.region]) == -1)
-                    p_error(E_WRITE);
-                
-                pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
-                printf("\t- sent[r]: region=%d | message=%s\n", m1.region, clipboard[m1.region].message);
-                pthread_rwlock_unlock(&rwlock_clip[m1.region]);
-            }
-            printf("\n");
+            
+            // thread to handle replication of this region for all remote clipboards execpt the one that asks the copy
+            replicate.client = client;
+            memcpy(replicate.message, &message, sizeof clipboard[m1.region]);
+            
+            pthread_mutex_lock(&mutex_replicate);
+            if(pthread_create(&thread_id, NULL, replicate_copy_cmd, (void *)&replicate) != 0) 
+                p_error(E_T_CREATE);
+            
+            pthread_mutex_lock(&mutex_replicate); // ensures that it is locked until copying client.fd and the message
+            pthread_mutex_unlock(&mutex_replicate);
 
         }else if(m1.operation == PASTE){
             /* copy struct to message */
@@ -119,47 +142,56 @@ void* local_thread_handler(void* args){
     /* when it receives EOF closes connection */
     close(client.fd);
     
-    pthread_mutex_lock(&mutex_fd);
+    pthread_mutex_lock(&mutex_nr_user);
     update_client_fds(client, RMV_FD);
-    pthread_mutex_unlock(&mutex_fd);
+    pthread_mutex_unlock(&mutex_nr_user);
+    
+    pthread_mutex_lock(&mutex_nr_threads);
+    nr_threads--;
+    pthread_mutex_unlock(&mutex_nr_threads);
     
     //will exit the thread that calls it.
     pthread_exit(NULL);
 }
 
 void* remote_thread_handler(void *args){
-    remote remote_t = *((remote *) args);
+    client_t client = *((client_t *) args);
     pthread_mutex_unlock(&mutex_cpy_r_fd);
     
-    client_fd client;
-    client.fd = remote_t.fd;
-    client.type = REMOTE;
-
-    pthread_mutex_lock(&mutex_fd);
-    update_client_fds(client, ADD_FD);
-    pthread_mutex_unlock(&mutex_fd);
+    replicate_t replicate;
+    pthread_t thread_id;
+    message_t m1;
     
     char message[sizeof(message_t)];
     int region;
-    message_t m1;
     
-    printf("[log] thread: threadID=%lu\n\t- was created to handle communication with the new remote client: %s\n\n", pthread_self(), remote_t.sin_addr);
+    pthread_mutex_lock(&mutex_nr_user);
+    update_client_fds(client, ADD_FD);
+    pthread_mutex_unlock(&mutex_nr_user);
+    
+    pthread_mutex_lock(&mutex_nr_threads);
+    nr_threads++;
+    pthread_mutex_unlock(&mutex_nr_threads);
 
-    for(region = 0; region < NREGIONS; region++){
-        pthread_rwlock_rdlock(&rwlock_clip[region]);
-        memcpy(message, &clipboard[region], sizeof clipboard[region]); //copy struct to message
-        pthread_rwlock_unlock(&rwlock_clip[region]);
-        
-        if(write(remote_t.fd, message, sizeof clipboard[region]) == -1) //send message to clipboard
-            p_error(E_WRITE);
-        
-        pthread_rwlock_rdlock(&rwlock_clip[region]);
-        printf("\t- sent[r]: region=%d | message=%s\n", region, clipboard[region].message);
-        pthread_rwlock_unlock(&rwlock_clip[region]);
+    printf("[log] thread: threadID=%lu\n\t- was created to handle communication with the new remote client: %s\n\n", pthread_self(), client.sin_addr);
+
+    if(client.fd != r_out_sock_fd){
+        for(region = 0; region < NREGIONS; region++){
+            pthread_rwlock_rdlock(&rwlock_clip[region]);
+            memcpy(message, &clipboard[region], sizeof clipboard[region]); //copy struct to message
+            pthread_rwlock_unlock(&rwlock_clip[region]);
+            
+            if(write(client.fd, message, sizeof clipboard[region]) == -1) //send message to clipboard
+                p_error(E_WRITE);
+            
+            pthread_rwlock_rdlock(&rwlock_clip[region]);
+            printf("\t- sent[r]: region=%d | message=%s\n", region, clipboard[region].message);
+            pthread_rwlock_unlock(&rwlock_clip[region]);
+        }
+        printf("\n");
     }
-    printf("\n");
 
-    while(recv(remote_t.fd, message, sizeof(message_t), 0) > 0){
+    while(recv(client.fd, message, sizeof(message_t), 0) > 0){
         memcpy(&m1, message,  sizeof m1);
         
         printf("[log] thread: threadID=%lu\n", pthread_self());
@@ -171,8 +203,21 @@ void* remote_thread_handler(void *args){
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
             
             pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
-            printf("\t- recv[r]: region=%d | message=%s\n\n", m1.region, clipboard[m1.region].message);
+            printf("\t- recv[r]: region=%d | message=%s\n", m1.region, clipboard[m1.region].message);
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
+            
+            //if(client.fd != r_out_sock_fd){
+                // thread to handle replication of this region for all remote clipboards execpt the one that asks the copy
+                replicate.client = client;
+                memcpy(replicate.message, &message, sizeof clipboard[m1.region]);
+                
+                pthread_mutex_lock(&mutex_replicate);
+                if(pthread_create(&thread_id, NULL, replicate_copy_cmd, (void *)&replicate) != 0) 
+                    p_error(E_T_CREATE);
+                
+                pthread_mutex_lock(&mutex_replicate); // ensures that it is locked until copying client.fd and the message
+                pthread_mutex_unlock(&mutex_replicate);
+            //}
         }
 
     }
@@ -180,11 +225,15 @@ void* remote_thread_handler(void *args){
     printf("[log] thread: threadID=%lu\n\t- closing connection and exiting.\n\n", pthread_self());
 
     /* when it receives EOF closes connection */
-    close(remote_t.fd);
+    close(client.fd);
     
-    pthread_mutex_lock(&mutex_fd);
+    pthread_mutex_lock(&mutex_nr_user);
     update_client_fds(client, RMV_FD);
-    pthread_mutex_unlock(&mutex_fd);
+    pthread_mutex_unlock(&mutex_nr_user);
+    
+    pthread_mutex_lock(&mutex_nr_threads);
+    nr_threads--;
+    pthread_mutex_unlock(&mutex_nr_threads);
 
     //will exit the thread that calls it.
     pthread_exit(NULL);
@@ -194,7 +243,7 @@ void* accept_local_client_handler(void *args){
     struct sockaddr_un client_addr;
     socklen_t size_addr;
     pthread_t thread_id;
-    int client_fd;
+    client_t client;
     
     memset(&client_addr, 0, sizeof(client_addr));
     client_addr.sun_family = AF_UNIX;
@@ -202,14 +251,15 @@ void* accept_local_client_handler(void *args){
     
     printf("\n[log] thread: threadID=%lu\n\t- was created to handle accept local clients\n", pthread_self());
     
-    pthread_mutex_lock(&mutex_fd);
+    pthread_mutex_lock(&mutex_nr_threads);
     nr_threads++;
-    pthread_mutex_unlock(&mutex_fd);
+    pthread_mutex_unlock(&mutex_nr_threads);
 
+    client.type = LOCAL;
+    
     /* Accept new connection from a new local client */
-    while((client_fd = accept(l_sock_fd, (struct sockaddr *) &client_addr, &size_addr)) != -1){
-
-        if(client_fd == -1)
+    while((client.fd = accept(l_sock_fd, (struct sockaddr *) &client_addr, &size_addr)) != -1){
+        if(client.fd == -1)
             p_error(E_ACCEPT);
         
         printf("[log] thread: threadID=%lu\n\t- acceped connection from: %s\n\n", pthread_self(), client_addr.sun_path);
@@ -217,17 +267,19 @@ void* accept_local_client_handler(void *args){
         pthread_mutex_lock(&mutex_cpy_l_fd);
         
         // create a new thread to handle the communication with the new local client
-        if(pthread_create(&thread_id, NULL, local_thread_handler, (void *)&client_fd) != 0)
+        if(pthread_create(&thread_id, NULL, local_thread_handler, (void *)&client) != 0)
             p_error(E_T_CREATE);
         
-        pthread_mutex_lock(&mutex_cpy_l_fd); //ensures that it is locked until copying client_fd
+        pthread_mutex_lock(&mutex_cpy_l_fd); // ensures that it is locked until copying client
         pthread_mutex_unlock(&mutex_cpy_l_fd);
         
     }
     
-    pthread_mutex_lock(&mutex_fd);
+    printf("[log] thread: threadID=%lu\n\t- exiting.\n\n", pthread_self());
+    
+    pthread_mutex_lock(&mutex_nr_threads);
     nr_threads--;
-    pthread_mutex_unlock(&mutex_fd);
+    pthread_mutex_unlock(&mutex_nr_threads);
     
     pthread_exit(NULL);
 }
@@ -236,46 +288,86 @@ void* accept_remote_client_handler(void *args){
     struct sockaddr_in client_addr;
     socklen_t size_addr;
     pthread_t thread_id;
-    remote remote_t;
+    client_t client;
     
     printf("\n[log] thread: threadID=%lu\n\t- was created to handle accept remote clients\n\n", pthread_self());
     
-    pthread_mutex_lock(&mutex_fd);
+    pthread_mutex_lock(&mutex_nr_threads);
     nr_threads++;
-    pthread_mutex_unlock(&mutex_fd);
+    pthread_mutex_unlock(&mutex_nr_threads);
+    
+    client.type = REMOTE_C;
     
     /* Accept new connection from a new remote client */
-    while((remote_t.fd = accept(r_in_sock_fd, (struct sockaddr *) &client_addr, &size_addr)) != -1){
-        if(remote_t.fd == -1)
+    while((client.fd = accept(r_in_sock_fd, (struct sockaddr *) &client_addr, &size_addr)) != -1){
+        if(client.fd == -1)
             p_error(E_ACCEPT);
 
-        strcpy(remote_t.sin_addr, inet_ntoa(client_addr.sin_addr));
+        strcpy(client.sin_addr, inet_ntoa(client_addr.sin_addr));
         
-        printf("[log] thread: threadID=%lu\n\t- acceped connection from: %s\n\n", pthread_self(), remote_t.sin_addr);
+        printf("[log] thread: threadID=%lu\n\t- acceped connection from: %s\n\n", pthread_self(), client.sin_addr);
         
         pthread_mutex_lock(&mutex_cpy_r_fd);
         
         // create a new thread to handle the communication with the new remote client
-        if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&remote_t) != 0)
+        if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&client) != 0)
             p_error(E_T_CREATE);
         
-        pthread_mutex_lock(&mutex_cpy_r_fd); //ensures that it is locked until copying client_fd
+        pthread_mutex_lock(&mutex_cpy_r_fd); //ensures that it is locked until copying client
         pthread_mutex_unlock(&mutex_cpy_r_fd);
     }
     
-    pthread_mutex_lock(&mutex_fd);
-    nr_threads--;
-    pthread_mutex_unlock(&mutex_fd);
+    printf("[log] thread: threadID=%lu\n\t- exiting.\n\n", pthread_self());
     
+    pthread_mutex_lock(&mutex_nr_threads);
+    nr_threads--;
+    pthread_mutex_unlock(&mutex_nr_threads);
+    
+    pthread_exit(NULL);
+}
+
+void* replicate_copy_cmd(void *args){
+    replicate_t replicate = *((replicate_t *) args);
+    pthread_mutex_unlock(&mutex_replicate);
+    
+    pthread_mutex_lock(&mutex_nr_threads);
+    nr_threads++;
+    pthread_mutex_unlock(&mutex_nr_threads);
+
+    message_t m1;
+    int i;
+    
+    memcpy(&m1, replicate.message,  sizeof (message_t));
+
+    printf("\n[log] thread: threadID=%lu\n\t- was created to handle replication of region %d\n", pthread_self(), m1.region);    
+    
+    for(i = 0; i < nr_users; i++){
+        if(all_client_fd[i].type >= REMOTE_C){
+            if((all_client_fd[i].fd != replicate.client.fd && replicate.client.type >= REMOTE_C) || replicate.client.type == LOCAL){
+                if(write(all_client_fd[i].fd, replicate.message, sizeof clipboard[m1.region]) == -1){
+                    p_error(E_WRITE);
+                }
+                printf("\t- sent[r]: region=%d | message=%s\n", m1.region, m1.message);
+            }
+        }
+        printf("\n");
+    }
+    
+    printf("\t- exiting.\n\n");
+    
+    pthread_mutex_lock(&mutex_nr_threads);
+    nr_threads--;
+    pthread_mutex_unlock(&mutex_nr_threads);
+
     pthread_exit(NULL);
 }
 
 void init(){
     int i;
     
-    if ((all_client_fd = (client_fd*) malloc( INITIAL_NR_FD * sizeof(client_fd) )) == NULL)
+    if ((all_client_fd = (client_t*) malloc( INITIAL_NR_FD * sizeof(client_t) )) == NULL)
         p_error(E_MALLOC);
-
+    
     for(i = 0; i < NREGIONS; i++){
         memset(&clipboard[i], 0, sizeof(message_t)); // clear memory
         clipboard[i].region = i;
@@ -291,6 +383,7 @@ void init(){
 }
 
 void verifyInputArguments(int argc, char* argv[]){
+    pthread_t thread_id;
     message_t m1;
     int i, port;
     char message[sizeof(message_t)];
@@ -321,11 +414,19 @@ void verifyInputArguments(int argc, char* argv[]){
             clipboard[m1.region] = m1;
             printf("\t- recv[r]: region=%d | message=%s\n", m1.region, clipboard[m1.region].message);
         }
-
+        
         remote_connection = 1;
-        printf("\n");
+        
+        pthread_mutex_lock(&mutex_cpy_r_fd);
+            
+        // create a new thread to handle the communication with the new remote client
+        if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&remote) != 0)
+            p_error(E_T_CREATE);
+        
+        pthread_mutex_lock(&mutex_cpy_r_fd); //ensures that it is locked until copying client
+        pthread_mutex_unlock(&mutex_cpy_r_fd);
+        
     }
-
 }
 
 void open_local_socket(){
@@ -378,7 +479,6 @@ void connect_server(char *ipAddress, int port){
 
     /* Create socket to the remote server */
     r_out_sock_fd = socket(AF_INET, SOCK_STREAM, 0);
-
     if (r_out_sock_fd == -1)
         p_error(E_SOCKET);
 
@@ -389,38 +489,39 @@ void connect_server(char *ipAddress, int port){
     if(connect(r_out_sock_fd, (const struct sockaddr *) &server_addr, sizeof(server_addr)) == -1)
         p_error(E_CONN);
 
-    printf("\t- connected with success to remote backup at: %s:%d\n", inet_ntoa(server_addr.sin_addr), port);
+    printf("\t- connected with success to %s:%d\n", inet_ntoa(server_addr.sin_addr), port);
+
+    remote.fd = r_out_sock_fd;
+    remote.type = REMOTE_S;
+    memcpy(remote.sin_addr, inet_ntoa(server_addr.sin_addr), sizeof(remote.sin_addr));    
 }
 
-void update_client_fds(client_fd client, int operation){
+void update_client_fds(client_t client, int operation){
     int i, flag = 0;
     
     if(operation == ADD_FD){
-        nr_threads++;
-        if(nr_threads - 2 < INITIAL_NR_FD)
-            if ((all_client_fd = (client_fd*) realloc(all_client_fd, (nr_threads-2) * sizeof(client_fd))) == NULL)
+        nr_users++;
+        if(nr_users < INITIAL_NR_FD)
+            if ((all_client_fd = (client_t*) realloc(all_client_fd, nr_users * sizeof(client_t))) == NULL)
                 p_error(E_REALLOC);
         
-        all_client_fd[(nr_threads-2) - 1].fd = client.fd;
-        all_client_fd[(nr_threads-2) - 1].type = client.type;
+        all_client_fd[nr_users - 1] = client;
         
     }else{
-        for(i = 0; i < (nr_threads-2); i++){
+        for(i = 0; i < nr_users; i++){
             if(!flag){
                 if(all_client_fd[i].fd == client.fd)
                     flag = 1;
             }else{
-                all_client_fd[i - 1].fd = all_client_fd[i].fd;
-                all_client_fd[i - 1].type = all_client_fd[i].type;
+                all_client_fd[i - 1] = all_client_fd[i];
             }
         }
         
-        nr_threads--;
-        if(nr_threads - 2 > INITIAL_NR_FD)
-            if ((all_client_fd = (client_fd*) realloc(all_client_fd, (nr_threads-2) * sizeof(client_fd))) == NULL)
+        nr_users--;
+        if(nr_users > INITIAL_NR_FD)
+            if ((all_client_fd = (client_t*) realloc(all_client_fd, nr_users * sizeof(client_t))) == NULL)
                 p_error(E_REALLOC);
     }
-
 }
 
 int isValidIpAddress(char *ipAddress) {
@@ -430,7 +531,7 @@ int isValidIpAddress(char *ipAddress) {
 
 void ctrl_c_callback_handler(int signum){
     printf("[sig] caught signal Ctr-C\n");
-    secure_exit(0);
+    pthread_cond_signal(&data_cond);
 }
 
 void p_error(char* msg){
@@ -443,10 +544,10 @@ void inv(char* msg){
     secure_exit(-1);
 }
 
-void secure_exit(int status){ //falta proteger isto
+void secure_exit(int status){
     int i;
     
-    for(i = 0; i < nr_threads - 2; i++){
+    for(i = 0; i < nr_users; i++){
         shutdown(all_client_fd[i].fd, SHUT_RDWR);
         close(all_client_fd[i].fd);
     }
@@ -462,14 +563,18 @@ void secure_exit(int status){ //falta proteger isto
 
     while(nr_threads);
     
-    free(all_client_fd);
-    
     for(i = 0; i < NREGIONS; i++)
         pthread_rwlock_destroy(&rwlock_clip[i]);
     
-    pthread_mutex_destroy(&mutex_fd);
+    pthread_mutex_destroy(&mutex_nr_user);
+    pthread_mutex_destroy(&mutex_nr_threads);
     pthread_mutex_destroy(&mutex_cpy_l_fd);
     pthread_mutex_destroy(&mutex_cpy_r_fd);
+    pthread_mutex_destroy(&mutex_replicate);
+    pthread_mutex_destroy(&mutex_terminate);
+    pthread_cond_destroy (&data_cond);
+    
+    //free(all_client_fd);
     
     printf("\n[!] exiting from clipboard\n\n");
     
