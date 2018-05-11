@@ -485,8 +485,10 @@ void connect_server(char *ipAddress, int port){
     if (r_out_sock_fd == -1)
         p_error(E_SOCKET);
 
+	memset(&server_addr, 0, sizeof(struct sockaddr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
+    printf("port %d\n", ntohs(server_addr.sin_port));
     inet_aton(ipAddress, &server_addr.sin_addr);
 
     if(connect(r_out_sock_fd, (const struct sockaddr *) &server_addr, sizeof(struct sockaddr)) == -1)
