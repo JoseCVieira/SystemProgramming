@@ -462,7 +462,7 @@ void open_remote_socket(){
     srand(getpid());
     int length_of_range = MAX_PORT - MIN_PORT + 1;
     int port = rand()%length_of_range + MIN_PORT;
-
+	port = 3000;
 	memset(&remote_addr, 0, sizeof(struct sockaddr));
     remote_addr.sin_family = AF_INET;
     remote_addr.sin_port= htons(port);
@@ -488,7 +488,6 @@ void connect_server(char *ipAddress, int port){
 	memset(&server_addr, 0, sizeof(struct sockaddr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
-    printf("port %d\n", ntohs(server_addr.sin_port));
     inet_aton(ipAddress, &server_addr.sin_addr);
 
     if(connect(r_out_sock_fd, (const struct sockaddr *) &server_addr, sizeof(struct sockaddr)) == -1)
