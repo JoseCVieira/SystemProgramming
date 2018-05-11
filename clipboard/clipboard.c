@@ -299,6 +299,7 @@ void* accept_remote_client_handler(void *args){
     
     client.type = REMOTE_C;
     
+    size_addr = sizeof(struct sockaddr);
     /* Accept new connection from a new remote client */
     while((client.fd = accept(r_in_sock_fd, (struct sockaddr *) &client_addr, &size_addr)) != -1){
         if(client.fd == -1)
@@ -423,7 +424,7 @@ void verifyInputArguments(int argc, char* argv[]){
         // create a new thread to handle the communication with the new remote client
         if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&remote) != 0)
             p_error(E_T_CREATE);
-        
+        //connect_server
         pthread_mutex_lock(&mutex_cpy_r_fd); //ensures that it is locked until copying client
         pthread_mutex_unlock(&mutex_cpy_r_fd);
         
@@ -462,11 +463,12 @@ void open_remote_socket(){
     int length_of_range = MAX_PORT - MIN_PORT + 1;
     int port = rand()%length_of_range + MIN_PORT;
 
+	memset(&remote_addr, 0, sizeof(struct sockaddr));
     remote_addr.sin_family = AF_INET;
     remote_addr.sin_port= htons(port);
     remote_addr.sin_addr.s_addr= INADDR_ANY;
 
-    if(bind(r_in_sock_fd, (struct sockaddr *)&remote_addr, sizeof(remote_addr)) == -1)
+    if(bind(r_in_sock_fd, (struct sockaddr *)&remote_addr, sizeof(struct sockaddr)) == -1)
         p_error(E_BIND);
     
     if(listen(r_in_sock_fd, NR_BACKLOG) == -1)
@@ -487,7 +489,7 @@ void connect_server(char *ipAddress, int port){
     server_addr.sin_port = htons(port);
     inet_aton(ipAddress, &server_addr.sin_addr);
 
-    if(connect(r_out_sock_fd, (const struct sockaddr *) &server_addr, sizeof(server_addr)) == -1)
+    if(connect(r_out_sock_fd, (const struct sockaddr *) &server_addr, sizeof(struct sockaddr)) == -1)
         p_error(E_CONN);
 
     printf("\t- connected with success to %s:%d\n", inet_ntoa(server_addr.sin_addr), port);
