@@ -64,17 +64,17 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
     message_t m;
     int result;
     char* message;
-
-    if ((message = (char*) malloc( sizeof(message_t) )) == NULL){
-        perror("[error] malloc");
-        exit(-1);
-    }
-
+    
     /* pass values to struct */
     m.operation = PASTE;
     m.region = region;
 
     if(m.region >= 0 && m.region < NREGIONS){
+        if ((message = (char*) malloc( sizeof(message_t) )) == NULL){
+            perror("[error] malloc");
+            exit(-1);
+        }
+
         /* serialize struct into message */
         memcpy(message, &m, sizeof(message_t));
 
@@ -102,9 +102,40 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
     return result;
 }
 
-/*int clipboard_wait(int clipboard_id, int region, void *buf, size_t count){
+int clipboard_wait(int clipboard_id, int region, void *buf, size_t count){
+    message_t m;
+    int result;
+    char* message;
+
+    if(m.region >= 0 && m.region < NREGIONS){
+        if ((message = (char*) malloc( sizeof(message_t) )) == NULL){
+            perror("[error] malloc");
+            exit(-1);
+        }
+        
+        while(1) {
+            /* read response from clipboard */
+            if((result = read(clipboard_id, message,  sizeof(message_t))) == -1){
+                free(message);
+                return (result=0);
+            }
+
+            /* message to message_t */
+            memcpy(&m, message, sizeof(message_t));
+            
+            if(m.region == region){
+                /* get message to print */
+                memcpy(buf, m.message, count);
+                break;
+            }
+        }
+        
+    }else
+        result = 0;
     
-}*/
+    free(message);
+    return result;
+}
 
 void clipboard_close(int clipboard_id){
     close(clipboard_id);

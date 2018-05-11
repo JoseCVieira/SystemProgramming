@@ -25,7 +25,7 @@
 #define CLOSE 3
 
 #define NR_BACKLOG 10
-#define INITIAL_NR_FD 1
+#define INITIAL_NR_FD 10
 
 #define ADD_FD 1
 #define RMV_FD -1
@@ -79,5 +79,5 @@ struct tm *tm_struct;
 int clipboard_connect(char * clipboard_dir);
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count);
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count);
-//int clipboard_wait(int clipboard_id, int region, void *buf, size_t count);
+int clipboard_wait(int clipboard_id, int region, void *buf, size_t count);
 void clipboard_close(int clipboard_id);

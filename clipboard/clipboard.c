@@ -68,7 +68,7 @@ int main(int argc, char* argv[]){
         while(nr_threads != 2);
     
     printf("[log] thread main: threadID:%lu\n\t- all set!\n\n", pthread_self());
-    
+
     pthread_mutex_lock(&mutex_terminate);
     pthread_cond_wait(&data_cond, &mutex_terminate);
     pthread_mutex_unlock(&mutex_terminate);
@@ -173,9 +173,10 @@ void* remote_thread_handler(void *args){
     nr_threads++;
     pthread_mutex_unlock(&mutex_nr_threads);
 
-    printf("[log] thread: threadID=%lu\n\t- was created to handle communication with the new remote client: %s\n\n", pthread_self(), client.sin_addr);
+    printf("[log] thread: threadID=%lu\n\t- was created to handle communication with the new remote client: %s\n", pthread_self(), client.sin_addr);
 
     if(client.fd != r_out_sock_fd){
+        printf("\n");
         for(region = 0; region < NREGIONS; region++){
             pthread_rwlock_rdlock(&rwlock_clip[region]);
             memcpy(message, &clipboard[region], sizeof clipboard[region]); //copy struct to message
@@ -350,7 +351,6 @@ void* replicate_copy_cmd(void *args){
                 printf("\t- sent[r]: region=%d | message=%s\n", m1.region, m1.message);
             }
         }
-        printf("\n");
     }
     
     printf("\t- exiting.\n\n");
@@ -365,7 +365,7 @@ void* replicate_copy_cmd(void *args){
 void init(){
     int i;
     
-    if ((all_client_fd = (client_t*) malloc( INITIAL_NR_FD * sizeof(client_t) )) == NULL)
+    if ((all_client_fd = (client_t*) malloc( 2 * sizeof(client_t) )) == NULL)
         p_error(E_MALLOC);
     
     for(i = 0; i < NREGIONS; i++){
@@ -414,6 +414,7 @@ void verifyInputArguments(int argc, char* argv[]){
             clipboard[m1.region] = m1;
             printf("\t- recv[r]: region=%d | message=%s\n", m1.region, clipboard[m1.region].message);
         }
+        printf("\n");
         
         remote_connection = 1;
         
@@ -500,8 +501,7 @@ void update_client_fds(client_t client, int operation){
     int i, flag = 0;
     
     if(operation == ADD_FD){
-        nr_users++;
-        if(nr_users < INITIAL_NR_FD)
+        if(++nr_users > INITIAL_NR_FD)
             if ((all_client_fd = (client_t*) realloc(all_client_fd, nr_users * sizeof(client_t))) == NULL)
                 p_error(E_REALLOC);
         
@@ -517,8 +517,7 @@ void update_client_fds(client_t client, int operation){
             }
         }
         
-        nr_users--;
-        if(nr_users > INITIAL_NR_FD)
+        if(--nr_users > INITIAL_NR_FD)
             if ((all_client_fd = (client_t*) realloc(all_client_fd, nr_users * sizeof(client_t))) == NULL)
                 p_error(E_REALLOC);
     }
@@ -563,6 +562,8 @@ void secure_exit(int status){
 
     while(nr_threads);
     
+    //free(all_client_fd);
+    
     for(i = 0; i < NREGIONS; i++)
         pthread_rwlock_destroy(&rwlock_clip[i]);
     
@@ -573,9 +574,7 @@ void secure_exit(int status){
     pthread_mutex_destroy(&mutex_replicate);
     pthread_mutex_destroy(&mutex_terminate);
     pthread_cond_destroy (&data_cond);
-    
-    //free(all_client_fd);
-    
+
     printf("\n[!] exiting from clipboard\n\n");
     
     exit(status);
