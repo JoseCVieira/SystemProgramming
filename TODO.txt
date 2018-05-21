@@ -11,3 +11,4 @@ falta:
 - testes de validação
 - imprimir sun_paths
 - mudar CLIPBOARD_SOCKET
+- qd ocorre um erro nao sai do secure exit

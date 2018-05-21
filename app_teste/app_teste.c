@@ -13,6 +13,9 @@
 #define WAIT 3
 #define CLOSE 4
 
+#define MIN_DATA 1
+#define MAX_DATA 100
+
 struct tm *tm_struct;
 
 void print_with_time(char * user_msg);
@@ -20,7 +23,7 @@ void print_with_time(char * user_msg);
 int main(){
     int region, operation;
     char *buf = NULL, socket_name[20];
-    size_t n = 0;
+    size_t count, n = 0;
     ssize_t nchr = 0;
 
     /* Menu */
@@ -29,7 +32,7 @@ int main(){
     printf("|             MENU             |\n");
     printf("+------------------------------+\n");
     printf("| copy  - 1 <region> <message> |\n");
-    printf("| paste - 2 <region> <length>  |\n"); //fazer isto
+    printf("| paste - 2 <region> <length>  |\n");
     printf("| wait  - 3 <region> <length>  |\n");
     printf("| close - 4                    |\n");
     printf("+------------------------------+\n");
@@ -68,14 +71,16 @@ int main(){
                 else
                     print_with_time("OK");
             }else if(operation == PASTE){
-                if(!clipboard_paste(sock_fd, region, buf, 100*sizeof(char))) //mudar isto!
+                count = atoi(buf);
+                if(!clipboard_paste(sock_fd, region, buf, count))
                     print_with_time("communication error.");
                 else
                     print_with_time(buf);
                 
             }else if(operation == WAIT){
+                count = atoi(buf);
                 print_with_time("waiting...\n");
-                if(!clipboard_wait(sock_fd, region, buf, 100*sizeof(char))) //mudar isto!
+                if(!clipboard_wait(sock_fd, region, buf, count))
                     print_with_time("communication error.");
                 else
                     print_with_time(buf);

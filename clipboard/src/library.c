@@ -44,38 +44,38 @@ int clipboard_connect(char * clipboard_dir){
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
     message_t m;
     int result;
-
+    
+    // dont let copy "nothing" to clipboard like computer's clipboard
+    if(count <= 0)
+        return 1;
+    
     /* pass values to struct */
     m.operation = COPY;
     m.region = region;
     m.size = count;
     
     if(m.region >= 0 && m.region < NREGIONS){
-        if((int)count){
-            char* message;
-            if ((message = (char*) malloc(sizeof(message_t))) == NULL){
-                free(message);
-                return 0;
-            }
-            
-            /* serialize struct into char array */
-            memcpy(message, &m, sizeof(message_t));
-
-            /* send message_t to socket */
-            if(write(clipboard_id, message, sizeof(message_t)) == -1){
-                free(message);
-                return 0;
-            }
-            
-            free(message);     
-            
-            /* send buf to socket */
-            if((result = write(clipboard_id, buf, count)) == -1)
-                return 0;
-            return result;
-        }else
-            return 1; // dont let copy "nothing" to clipboard like computer's clipboard
+        char* message;
+        if ((message = (char*) malloc(sizeof(message_t))) == NULL){
+            free(message);
+            return 0;
+        }
         
+        /* serialize struct into char array */
+        memcpy(message, &m, sizeof(message_t));
+
+        /* send message_t to socket */
+        if(write(clipboard_id, message, sizeof(message_t)) == -1){
+            free(message);
+            return 0;
+        }
+        
+        free(message);     
+        
+        /* send buf to socket */
+        if((result = write(clipboard_id, buf, count)) == -1)
+            return 0;
+        return result;
     }else
         return 0;
 }
@@ -83,6 +83,10 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
     message_t m;
     int result;
+    
+    // dont let paste "nothing" like computer's clipboard
+    if(count <= 0)
+        return 1;
     
     /* pass values to struct */
     m.operation = PASTE;
@@ -119,6 +123,10 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
 int clipboard_wait(int clipboard_id, int region, void *buf, size_t count){
     message_t m;
     int result;
+    
+    // dont let wait for "nothing"
+    if(count <= 0)
+        return 1;
     
     /* pass values to struct */
     m.operation = WAIT;
