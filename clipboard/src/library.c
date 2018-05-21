@@ -116,7 +116,39 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
 }
 
 int clipboard_wait(int clipboard_id, int region, void *buf, size_t count){
-    return 0;
+    message_t m;
+    int result;
+    
+    /* pass values to struct */
+    m.operation = WAIT;
+    m.region = region;
+    m.size = count;
+
+    if(m.region >= 0 && m.region < NREGIONS){
+        char* message;
+        if ((message = (char*) malloc( sizeof(message_t) )) == NULL){
+            free(message);
+            return 0;
+        }
+
+        /* serialize struct into char array */
+        memcpy(message, &m, sizeof(message_t));
+
+        /* send message_t to socket */
+        if(write(clipboard_id, message, sizeof(message_t)) == -1){
+            free(message);
+            return 0;
+        }
+
+        free(message);
+        
+        /* read response from clipboard */
+        if((result = read(clipboard_id, buf, count)) == -1)
+            return 0;
+        return result;
+        
+    }else
+        return 0;
 }
 
 void clipboard_close(int clipboard_id){

@@ -30,7 +30,7 @@ int main(){
     printf("+------------------------------+\n");
     printf("| copy  - 1 <region> <message> |\n");
     printf("| paste - 2 <region> <length>  |\n"); //fazer isto
-    printf("| wait  - 3 <region>           |\n");
+    printf("| wait  - 3 <region> <length>  |\n");
     printf("| close - 4                    |\n");
     printf("+------------------------------+\n");
     
@@ -74,7 +74,11 @@ int main(){
                     print_with_time(buf);
                 
             }else if(operation == WAIT){
-                print_with_time("not implemented yet.");
+                print_with_time("waiting...\n");
+                if(!clipboard_wait(sock_fd, region, buf, 100*sizeof(char))) //mudar isto!
+                    print_with_time("communication error.");
+                else
+                    print_with_time(buf);
             }else
                 print_with_time("invalid option.");
            

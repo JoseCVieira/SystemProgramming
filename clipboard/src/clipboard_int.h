@@ -74,6 +74,8 @@ typedef struct s_clipboard {
 typedef struct s_client {
     int fd;
     int type;
+    int wait;
+    size_t wait_size;
     char sin_addr[20];
 }client_t;
 
