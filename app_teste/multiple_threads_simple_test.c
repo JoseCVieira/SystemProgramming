@@ -1,5 +1,5 @@
 #include "../clipboard/src/clipboard.h"
-#define NTHREADS 10
+#define NTHREADS 1
 void print_with_time(char * user_msg);
 void test_string(char * user_msg,int id, int i);
 void * thread_handler(void * args);
@@ -38,7 +38,6 @@ void *thread_handler(void * args){
 
   for(i = 0; i < NREGIONS; i++){
     test_string(buf,*((int*)args), i);
-    printf("%s\n", buf);
     clipboard_copy(sock_fd, i,buf,100 );
   }
 
