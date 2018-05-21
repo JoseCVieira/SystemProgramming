@@ -1,18 +1,11 @@
 duvidas:
 - esta certo copy paste da library??
-- para que serve o clip_wait?
-- é preciso proteger os prints que envolvem o clipboard?
 - name of the socket is CLIPBOARD_SOCKET - é assim?
 - devemos apagar primeiro os mutexes antes de apagar os shared memorys? (secure exit)
-
-duvidas enunciado:
--  A Library composed of a set of .c files that implement the API
-- The Library should be composed of a .h file (called clipboard.h) and a set of .c files.
+- no paste a app é que define o tamanho que quer ler??
+- clipboard_close é so aquilo??
+- qd saimos de um clip vai fechar o socket e ja nao da para connecter localmente
 
 falta:
-- Students should implement different applications that allow the validation of the various
-cases, for instance:
-    • Multiple application copying to the same region
-    • Multiple applications copying and pasting from the same region
-    • Multiple application connected to different or to the same clipboard
-    •...
+- testes de validação
+- imprimir sun_paths

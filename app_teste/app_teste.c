@@ -1,43 +1,58 @@
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <ctype.h>
+#include <errno.h>
+#include <stdio.h>
+#include <time.h>
+
 #include "../clipboard/src/clipboard.h"
+
+#define COPY 1
+#define PASTE 2
+#define WAIT 3
+#define CLOSE 4
+
+struct tm *tm_struct;
 
 void print_with_time(char * user_msg);
 
 int main(){
     int region, operation;
-    message_t m;
-    char *buf;
-    
-    if ((buf = (char*) malloc( sizeof m.message + 4*sizeof(char) )) == NULL){
-        perror("[error] malloc");
-        exit(-1);
-    }
-    
-    printf("\n");
+    char *buf = NULL, socket_name[20];
+    size_t n = 0;
+    ssize_t nchr = 0;
+
+    /* Menu */
+    printf("\n\n");
+    printf("+------------------------------+\n");
+    printf("|             MENU             |\n");
+    printf("+------------------------------+\n");
+    printf("| copy  - 1 <region> <message> |\n");
+    printf("| paste - 2 <region> <length>  |\n"); //fazer isto
+    printf("| wait  - 3 <region>           |\n");
+    printf("| close - 4                    |\n");
+    printf("+------------------------------+\n");
     
     /* Connect to clipboard (server) */
-    sprintf(buf, "./socket_%d", getpid());
-    int sock_fd = clipboard_connect(buf);
-    
+    sprintf(socket_name, "./socket_%d", getpid());
+    int sock_fd = clipboard_connect(socket_name);
     if(sock_fd == -1){
         perror("[error] connect");
         exit(-1);
     }
 
-    /* Menu */
-    printf("\n");
-    printf("+------------------------------+\n");
-    printf("|             MENU             |\n");
-    printf("+------------------------------+\n");
-    printf("| copy  - 1 <region> <message> |\n");
-    printf("| paste - 2 <region>           |\n");
-    printf("| close - 3                    |\n");
-    printf("+------------------------------+\n");
-
     while(1){
         printf("\noption: ");
         
-        fgets(buf, MSG_SIZE, stdin);
-        strtok(buf, "\n");        
+        n = 0;
+        nchr = 0;
+
+        if(buf != NULL && strlen(buf))
+            memset(buf, 0, strlen(buf));
+        
+        if ((nchr = getline (&buf, &n, stdin)) != -1)
+            buf[--nchr] = 0;  // strip newline
         
         if(isdigit(buf[0]) && isdigit(buf[2])){
             
@@ -45,20 +60,21 @@ int main(){
             operation = buf[0] - '0';
             region = buf[2] - '0';
             
-            memcpy(buf, buf + 4*sizeof(char), sizeof m.message);
+            memmove(buf, buf+4, (nchr+4) + 4);
 
             if(operation == COPY){
-                if(!clipboard_copy(sock_fd, region, buf, sizeof m.message))
+                if(!clipboard_copy(sock_fd, region, buf, strlen(buf)))
                     print_with_time("communication error.");
                 else
                     print_with_time("OK");
-                
             }else if(operation == PASTE){
-                if(!clipboard_paste(sock_fd, region, buf, sizeof m.message))
+                if(!clipboard_paste(sock_fd, region, buf, 100*sizeof(char))) //mudar isto!
                     print_with_time("communication error.");
                 else
                     print_with_time(buf);
                 
+            }else if(operation == WAIT){
+                print_with_time("not implemented yet.");
             }else
                 print_with_time("invalid option.");
            
