@@ -106,13 +106,17 @@ void* local_thread_handler(void* args){
             clipboard[m1.region].size = m1.size;
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
             
-            // receive data until size is the same as the previous received size
+            // receive data until size is the same as the previous size received
             received = 0;
             while(received != m1.size){
                 memset(message_clip, 0, m1.size);
                 if((aux = recv(client.fd, message_clip, m1.size - received, 0)) == -1)
                     p_error(E_RECV);
+                
+                pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
                 memcpy(clipboard[m1.region].data + received, message_clip, aux);
+                pthread_rwlock_unlock(&rwlock_clip[m1.region]);
+                
                 received += aux;
             }
             
@@ -120,8 +124,8 @@ void* local_thread_handler(void* args){
             printf("\t- recv[l]: region=%d | message=%s\n", m1.region, (char*)clipboard[m1.region].data);
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
 
-            // thread to handle replication of this region for all remote clipboards
-            // execpt the one that asks the copy and for some local app that is locked
+            // thread to handle replication of this region for all remote clipboards 
+            // except the one that asks the copy and for some local app that is locked
             // in a wait state
             replicate.client = client;
             replicate.message = m1;
@@ -191,7 +195,7 @@ void* local_thread_handler(void* args){
     free(message_clip);
     free(replicate.data);
     
-    // remove cient from the list of all clients
+    // remove client from the list of all clients
     pthread_mutex_lock(&mutex_nr_user);
     update_client_fds(client, RMV_FD);
     pthread_mutex_unlock(&mutex_nr_user);
@@ -263,7 +267,7 @@ void* remote_thread_handler(void *args){
             if((message_clip = realloc(message_clip, size)) == NULL)
                 p_error(E_REALLOC);
         
-            //copy clipboard's data of this region to message_clip
+            // copy clipboard's data from this region to message_clip
             pthread_rwlock_rdlock(&rwlock_clip[region]);
             memcpy(message_clip, clipboard[region].data, size);
             pthread_rwlock_unlock(&rwlock_clip[region]);
@@ -286,7 +290,7 @@ void* remote_thread_handler(void *args){
         // data to receive and the respective region
         memcpy(&m1, message, sizeof m1);
         
-        // from a clipboard the operation is allways a copy, so if it receives
+        // from a clipboard the operation is always a copy, so if it receives
         // "nothing", then nothing happens, as the real computer's clipboard does
         if(!(int)m1.size){
             printf("\t- recv[r]: region=%d | message=\n", m1.region);
@@ -307,13 +311,17 @@ void* remote_thread_handler(void *args){
         clipboard[m1.region].size = m1.size;
         pthread_rwlock_unlock(&rwlock_clip[m1.region]);
         
-        // receive data until size is the same as the previous received size
+        // receive data until size is the same as the previous size received 
         received = 0;
         while(received != m1.size){
             memset(message_clip, 0, m1.size);
             if((aux = recv(client.fd, message_clip, m1.size - received, 0)) == -1)
                 p_error(E_RECV);
+            
+            pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
             memcpy(clipboard[m1.region].data + received, message_clip, aux);
+            pthread_rwlock_unlock(&rwlock_clip[m1.region]);
+            
             received += aux;
         }
 
@@ -322,7 +330,7 @@ void* remote_thread_handler(void *args){
         pthread_rwlock_unlock(&rwlock_clip[m1.region]);
         
         // thread to handle replication of this region for all remote clipboards
-        // execpt the one that asks the copy and for some local app that is locked
+        // except the one that asks the copy and for some local app that is locked
         // in a wait state
         replicate.client = client;
         replicate.message = m1;
@@ -348,7 +356,7 @@ void* remote_thread_handler(void *args){
     free(message_clip);
     free(replicate.data);
     
-    // remove cient from the list of all clients
+    // remove client from the list of all clients
     pthread_mutex_lock(&mutex_nr_user);
     update_client_fds(client, RMV_FD);
     pthread_mutex_unlock(&mutex_nr_user);
@@ -389,6 +397,7 @@ void* accept_local_client_handler(void *args){
         pthread_cond_signal(&data_cond);
     else if(!remote_connection && nr_threads == 2)
         pthread_cond_signal(&data_cond);
+    
     pthread_mutex_unlock(&mutex_nr_threads);
 
     // accept new connection from a new local client
@@ -404,7 +413,7 @@ void* accept_local_client_handler(void *args){
         if(pthread_create(&thread_id, NULL, local_thread_handler, (void *)&client) != 0)
             p_error(E_T_CREATE);
         
-        // ensures that it is locked until client has been copyed
+        // ensures that it is locked until client has been copied
         pthread_mutex_lock(&mutex_cpy_l_fd);
         pthread_mutex_unlock(&mutex_cpy_l_fd);
         
@@ -438,11 +447,12 @@ void* accept_remote_client_handler(void *args){
     pthread_mutex_lock(&mutex_nr_threads);
     nr_threads++;
     
-    //signal if all initial threads have been created
+    // signal if all initial threads have been created
     if(remote_connection && nr_threads == 3)
         pthread_cond_signal(&data_cond);
     else if(!remote_connection && nr_threads == 2)
         pthread_cond_signal(&data_cond);
+    
     pthread_mutex_unlock(&mutex_nr_threads);
 
     // accept new connection from a new remote client
@@ -461,7 +471,7 @@ void* accept_remote_client_handler(void *args){
         if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&client) != 0)
             p_error(E_T_CREATE);
         
-        // ensures that it is locked until client has been copyed
+        // ensures that it is locked until client has been copied
         pthread_mutex_lock(&mutex_cpy_r_fd);
         pthread_mutex_unlock(&mutex_cpy_r_fd);
     }
@@ -489,7 +499,7 @@ void* replicate_copy_cmd(void *args){
     n_user = nr_users;
     pthread_mutex_unlock(&mutex_nr_user);
 
-    // serialize sctuct(message_t)
+    // serialize struct(message_t)
     memcpy(message, &replicate.message, sizeof(message_t));
     
     // increment number of active threads
@@ -599,7 +609,7 @@ void verifyInputArguments(int argc, char* argv[]){
         if(port < MIN_PORT || port > MAX_PORT)
             inv(I_PORT);
 
-        //connect to the remote backup
+        // connect to the remote backup
         remote = connect_server(argv[2], port);
         remote_connection = 1;
         
@@ -610,7 +620,7 @@ void verifyInputArguments(int argc, char* argv[]){
         if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&remote) != 0)
             p_error(E_T_CREATE);
         
-        //ensures that it is locked until copying client
+        // ensures that it is locked until copying client
         pthread_mutex_lock(&mutex_cpy_r_fd);
         pthread_mutex_unlock(&mutex_cpy_r_fd);
     }
@@ -700,7 +710,7 @@ void update_client_fds(client_t client, int operation){
     
     // add a new client
     if(operation == ADD_FD){
-        // allocate more memory if nedded
+        // allocate more memory if needed
         if(++nr_users > INITIAL_NR_FD)
             if ((all_client_fd = (client_t*) realloc(all_client_fd, nr_users * sizeof(client_t))) == NULL)
                 p_error(E_REALLOC);
@@ -718,7 +728,7 @@ void update_client_fds(client_t client, int operation){
             }
         }
         
-        // remove some memory if nedded
+        // remove some memory if needed
         if(--nr_users > INITIAL_NR_FD)
             if ((all_client_fd = (client_t*) realloc(all_client_fd, nr_users * sizeof(client_t))) == NULL)
                 p_error(E_REALLOC);
@@ -763,7 +773,7 @@ void secure_exit(int status){
     
     unlink(SOCK_ADDRESS);
 
-    //waits until every thread are closed
+    // waits until every thread are closed
     pthread_mutex_lock(&mutex_data_cond);
     pthread_mutex_unlock(&mutex_data_cond);
     

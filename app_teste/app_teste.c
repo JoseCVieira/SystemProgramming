@@ -63,11 +63,7 @@ int main(){
             memmove(buf, buf+4, (nchr+4) + 4);
 
             if(operation == COPY){
-<<<<<<< HEAD
-                if(!clipboard_copy(sock_fd, 11, buf, sizeof m.message))
-=======
                 if(!clipboard_copy(sock_fd, region, buf, strlen(buf)))
->>>>>>> 295e5be8a13ff4c26faa1186b6ee34ee613bb50c
                     print_with_time("communication error.");
                 else
                     print_with_time("OK");
