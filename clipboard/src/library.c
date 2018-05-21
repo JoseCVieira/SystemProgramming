@@ -20,10 +20,11 @@ typedef struct s_message {
 int clipboard_connect(char * clipboard_dir){
     struct sockaddr_un server_addr;
     struct sockaddr_un client_addr;
+    int sock_fd;
 
     /* Create socket */
-    int sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
-    if(sock_fd == -1) return sock_fd;
+    if((sock_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
+        return sock_fd;
 
     /* Create client socket address => sun_family field always contains AF_UNIX | path to the socket */
     client_addr.sun_family = AF_UNIX;

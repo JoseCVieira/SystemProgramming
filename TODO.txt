@@ -1,6 +1,5 @@
 duvidas:
 - esta certo copy paste da library??
-- name of the socket is CLIPBOARD_SOCKET - é assim?
 - devemos apagar primeiro os mutexes antes de apagar os shared memorys? (secure exit)
 - no paste a app é que define o tamanho que quer ler??
 - clipboard_close é so aquilo??
@@ -11,3 +10,4 @@ duvidas:
 falta:
 - testes de validação
 - imprimir sun_paths
+- mudar CLIPBOARD_SOCKET
