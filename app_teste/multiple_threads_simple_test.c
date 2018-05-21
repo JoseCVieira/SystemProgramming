@@ -1,5 +1,25 @@
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/time.h>
+#include <arpa/inet.h>
+
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <signal.h>
+#include <stdio.h>
+#include <fcntl.h>
+#include <ctype.h>
+#include <pthread.h>
+#include <ifaddrs.h>
+#include <errno.h>
 #include "../clipboard/src/clipboard.h"
-#define NTHREADS 10
+#define NTHREADS 7
+#define NREGIONS 10
+#define MSGSIZE 100
 void print_with_time(char * user_msg);
 void test_string(char * user_msg,int id, int i);
 void * thread_handler(void * args);
@@ -18,16 +38,15 @@ int main(){
 }
 void *thread_handler(void * args){
   int  i;
-  message_t m;
   char *buf;
-  if ((buf = (char*) malloc( sizeof m.message + 4*sizeof(char) )) == NULL){
+  if ((buf = (char*) malloc(  MSGSIZE * sizeof(char) )) == NULL){
       perror("[error] malloc");
       exit(-1);
   }
 
   printf("\n");
   /* Connect to clipboard (server) */
-  sprintf(buf, "./socket_%d", getpid());
+ sprintf(buf, "./socket_%d", getpid());
   int sock_fd = clipboard_connect(buf);
 
   if(sock_fd == -1){
@@ -38,11 +57,11 @@ void *thread_handler(void * args){
 
   for(i = 0; i < NREGIONS; i++){
     test_string(buf,*((int*)args), i);
-    clipboard_copy(sock_fd, i,buf,100 );
+    clipboard_copy(sock_fd, i,buf,MSGSIZE );
   }
 
   for(i = 0; i < NREGIONS; i++){
-    clipboard_paste(sock_fd, i,buf,100 );
+    clipboard_paste(sock_fd, i,buf,MSGSIZE );
     printf("%s\n", buf);
   }
   free(buf);
@@ -50,12 +69,13 @@ void *thread_handler(void * args){
 }
 
 void print_with_time(char * user_msg){
-
+    struct tm *tm_struct;
     time_t time_v = time(NULL);
     tm_struct = localtime(&time_v);
     printf("<%02d:%02d:%02d> %s\n", tm_struct->tm_hour, tm_struct->tm_min, tm_struct->tm_sec, user_msg);
 }
 void test_string(char * user_msg, int id, int i){
+    struct tm *tm_struct;
     if (realloc(user_msg, 100*sizeof(char) ) == NULL){
         perror("[error] malloc");
         exit(-1);
