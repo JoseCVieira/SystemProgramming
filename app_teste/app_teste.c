@@ -48,7 +48,7 @@ int main(){
             memcpy(buf, buf + 4*sizeof(char), sizeof m.message);
 
             if(operation == COPY){
-                if(!clipboard_copy(sock_fd, region, buf, sizeof m.message))
+                if(!clipboard_copy(sock_fd, 11, buf, sizeof m.message))
                     print_with_time("communication error.");
                 else
                     print_with_time("OK");

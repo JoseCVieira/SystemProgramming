@@ -1,5 +1,5 @@
 #include "../clipboard/src/clipboard.h"
-#define NTHREADS 1
+#define NTHREADS 10
 void print_with_time(char * user_msg);
 void test_string(char * user_msg,int id, int i);
 void * thread_handler(void * args);
