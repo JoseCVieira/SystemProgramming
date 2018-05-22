@@ -36,18 +36,26 @@ int main(int argc, char* argv[]){
     verifyInputArguments(argc, argv);        // verify input arguments and create socket to remote backup if needded
 
     // thread to handle accept local clients
-    if(pthread_create(&thread_id, NULL, accept_local_client_handler, NULL) != 0)
-        p_error(E_T_CREATE);
+    if(pthread_create(&thread_id, NULL, accept_local_client_handler, NULL) != 0){
+        perror(E_T_CREATE);
+        secure_exit(1);
+    }
     // detach thread so when it terminates, its resources are automatically released
-    if (pthread_detach(thread_id))
-        p_error(E_T_DETACH);
+    if (pthread_detach(thread_id)){
+        perror(E_T_DETACH);
+        secure_exit(1);
+    }
     
     // thread to handle accept remote clients
-    if(pthread_create(&thread_id, NULL, accept_remote_client_handler, NULL) != 0)
-        p_error(E_T_CREATE);
+    if(pthread_create(&thread_id, NULL, accept_remote_client_handler, NULL) != 0){
+        perror(E_T_CREATE);
+        secure_exit(1);
+    }
     // detach thread so when it terminates, its resources are automatically released
-    if (pthread_detach(thread_id))
-        p_error(E_T_DETACH);
+    if (pthread_detach(thread_id)){
+        perror(E_T_DETACH);
+        secure_exit(1);
+    }
 
     // waits until all initial threads are created
     pthread_mutex_lock(&mutex_data_cond);
@@ -61,7 +69,7 @@ int main(int argc, char* argv[]){
     pthread_cond_wait(&data_cond, &mutex_data_cond);
     pthread_mutex_unlock(&mutex_data_cond);
 
-    secure_exit();
+    secure_exit(0);
     return 0;
 }
 
@@ -78,6 +86,8 @@ void* local_thread_handler(void* args){
     replicate_t replicate;
     pthread_t thread_id;
     message_t m1;
+    
+    replicate.data = NULL;
     
     // increment number of active threads
     pthread_mutex_lock(&mutex_nr_threads);
@@ -228,13 +238,14 @@ void* remote_thread_handler(void *args){
     pthread_mutex_unlock(&mutex_cpy_r_fd);
     
     char message[sizeof(message_t)];
-    char clean_char = '\0';
     void *message_clip = NULL;
     int region;
     size_t size, received, aux;
     replicate_t replicate;
     pthread_t thread_id;
     message_t m1;
+    
+    replicate.data = NULL;
     
     // increment number of active threads
     pthread_mutex_lock(&mutex_nr_threads);
@@ -270,8 +281,6 @@ void* remote_thread_handler(void *args){
             
             // if this region have no data yet, then just sends a '\0' character
             if(!(int)size){
-                if(write(client.fd, &clean_char, m1.size) == -1)
-                    p_error(E_WRITE);
                 printf("\t- sent[r]: region=%d | message=\n", region);
                 continue;
             }
@@ -591,16 +600,19 @@ void init(){
     int i;
     
     // create an initial vector of all clients of this clipboard
-    if ((all_client_fd = (client_t*) malloc( INITIAL_NR_FD * sizeof(client_t) )) == NULL)
-        p_error(E_MALLOC);
+    if ((all_client_fd = (client_t*) malloc( INITIAL_NR_FD * sizeof(client_t) )) == NULL){
+        perror(E_MALLOC);
+        secure_exit(1);
+    }
     
     // init each region of the clipboard and initialize rwlock
     for(i = 0; i < NREGIONS; i++){
         clipboard[i].data = NULL;
         clipboard[i].size = 0;
         
-        if(pthread_rwlock_init(&rwlock_clip[i], NULL))
-            p_error(E_RWLOCK);
+        if(pthread_rwlock_init(&rwlock_clip[i], NULL)){
+            perror(E_RWLOCK);
+        }
     }
     
     unlink(SOCK_ADDRESS);
@@ -639,11 +651,15 @@ void verifyInputArguments(int argc, char* argv[]){
         pthread_mutex_lock(&mutex_cpy_r_fd);
         
         // create a new thread to handle the communication with the new remote client
-        if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&remote) != 0)
-            p_error(E_T_CREATE);
+        if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&remote) != 0){
+            perror(E_T_CREATE);
+            secure_exit(1);
+        }
         // detach thread so when it terminates, its resources are automatically released
-        if (pthread_detach(thread_id))
-            p_error(E_T_DETACH);
+        if (pthread_detach(thread_id)){
+            perror(E_T_DETACH);
+            secure_exit(1);
+        }
         
         // ensures that it is locked until copying client
         pthread_mutex_lock(&mutex_cpy_r_fd);
@@ -656,19 +672,25 @@ void open_local_socket(){
     struct sockaddr_un local_addr;
 
     // create socket
-    if((l_sock_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1)
-        p_error(E_SOCKET);
+    if((l_sock_fd = socket(AF_UNIX, SOCK_STREAM, 0)) == -1){
+        perror(E_SOCKET);
+        secure_exit(1);
+    }
 
     local_addr.sun_family = AF_UNIX;
     strcpy(local_addr.sun_path, SOCK_ADDRESS);
 
     // bind socket -> assigns the address to the socket referred to by the file descriptor sockfd
-    if(bind(l_sock_fd, (struct sockaddr *)&local_addr, sizeof(local_addr)) == -1)
-        p_error(E_BIND);
+    if(bind(l_sock_fd, (struct sockaddr *)&local_addr, sizeof(local_addr)) == -1){
+        perror(E_BIND);
+        secure_exit(1);
+    }
 
     // marks the socket as passive socket -> it will be used to accept incoming connection
-    if(listen(l_sock_fd, NR_BACKLOG) == -1)
-        p_error(E_LISTEN);
+    if(listen(l_sock_fd, NR_BACKLOG) == -1){
+        perror(E_LISTEN);
+        secure_exit(1);
+    }
     
     printf("\t- local socket created and binded with name = %s\n", SOCK_ADDRESS);
 }
@@ -678,8 +700,10 @@ void open_remote_socket(){
 
     // create socket
     r_in_sock_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (r_in_sock_fd == -1)
-        p_error(E_SOCKET);
+    if (r_in_sock_fd == -1){
+        perror(E_SOCKET);
+        secure_exit(1);
+    }
     
     // generate a random port
     srand(getpid());
@@ -693,12 +717,16 @@ void open_remote_socket(){
     remote_addr.sin_addr.s_addr= INADDR_ANY;
 
     // bind socket -> assigns the address to the socket referred to by the file descriptor sockfd
-    if(bind(r_in_sock_fd, (struct sockaddr *)&remote_addr, sizeof(struct sockaddr)) == -1)
-        p_error(E_BIND);
+    if(bind(r_in_sock_fd, (struct sockaddr *)&remote_addr, sizeof(struct sockaddr)) == -1){
+        perror(E_BIND);
+        secure_exit(1);
+    }
     
     // marks the socket as passive socket -> it will be used to accept incoming connection
-    if(listen(r_in_sock_fd, NR_BACKLOG) == -1)
-        p_error(E_LISTEN);
+    if(listen(r_in_sock_fd, NR_BACKLOG) == -1){
+        perror(E_LISTEN);
+        secure_exit(1);
+    }
     
     printf("\t- remote socket created and binded in port = %d\n", ntohs(remote_addr.sin_port));
 }
@@ -709,8 +737,10 @@ client_t connect_server(char *ipAddress, int port){
 
     // create socket to the remote server
     r_out_sock_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (r_out_sock_fd == -1)
-        p_error(E_SOCKET);
+    if (r_out_sock_fd == -1){
+        perror(E_SOCKET);
+        secure_exit(1);
+    }
 
 	memset(&server_addr, 0, sizeof(struct sockaddr));
     server_addr.sin_family = AF_INET;
@@ -718,9 +748,11 @@ client_t connect_server(char *ipAddress, int port){
     inet_aton(ipAddress, &server_addr.sin_addr);
 
     // connect to this socket
-    if(connect(r_out_sock_fd, (const struct sockaddr *) &server_addr, sizeof(struct sockaddr)) == -1)
-        p_error(E_CONN);
-
+    if(connect(r_out_sock_fd, (const struct sockaddr *) &server_addr, sizeof(struct sockaddr)) == -1){
+        perror(E_CONN);
+        secure_exit(1);
+    }
+    
     printf("\t- connected with success to %s:%d\n", inet_ntoa(server_addr.sin_addr), port);
 
     remote.fd = r_out_sock_fd;
@@ -777,13 +809,15 @@ void p_error(char* msg){
 
 void inv(char* msg){
     printf(msg);
-    pthread_cond_signal(&data_cond);
+    secure_exit(1);
 }
 
-void secure_exit(){
+void secure_exit(int flag){
     int i;
     
-    pthread_mutex_lock(&mutex_data_cond);
+    if(!flag)
+        pthread_mutex_lock(&mutex_data_cond);
+    
     for(i = 0; i < nr_users; i++){
         shutdown(all_client_fd[i].fd, SHUT_RDWR);
         close(all_client_fd[i].fd);
@@ -792,15 +826,17 @@ void secure_exit(){
     shutdown(l_sock_fd, SHUT_RDWR);
     close(l_sock_fd);
     shutdown(r_out_sock_fd, SHUT_RDWR);
-    close(r_out_sock_fd);    
+    close(r_out_sock_fd);
     shutdown(r_in_sock_fd, SHUT_RDWR);
     close(r_in_sock_fd);
     
     unlink(SOCK_ADDRESS);
 
-    // waits until every thread are closed
-    pthread_mutex_lock(&mutex_data_cond);
-    pthread_mutex_unlock(&mutex_data_cond);
+    if(!flag){
+        // waits until every thread are closed
+        pthread_mutex_lock(&mutex_data_cond);
+        pthread_mutex_unlock(&mutex_data_cond);
+    }
     
     free(all_client_fd);
     
@@ -818,4 +854,7 @@ void secure_exit(){
     pthread_cond_destroy (&data_cond);
 
     printf("\n[!] exiting from clipboard\n\n");
+    
+    if(flag)
+        exit(-1);
 }
