@@ -90,11 +90,11 @@ void update_client_fds(client_t client, int operation);
 void verifyInputArguments(int argc, char *argv[]);
 client_t connect_server(char *ipAddress, int port);
 int isValidIpAddress(char *ipAddress);
-void secure_exit(int status);
 void open_remote_socket();
 void open_local_socket();
 void p_error(char* msg);
 void inv(char* msg);
+void secure_exit();
 void init();
 
 // thread handlers prototypes

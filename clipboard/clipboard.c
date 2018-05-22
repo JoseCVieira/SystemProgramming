@@ -55,8 +55,8 @@ int main(int argc, char* argv[]){
     pthread_cond_wait(&data_cond, &mutex_data_cond);
     pthread_mutex_unlock(&mutex_data_cond);
 
-    secure_exit(0);
-    exit(0); // never happens
+    secure_exit();
+    return 0;
 }
 
 // thread to handle the communication with local clients
@@ -750,15 +750,15 @@ void ctrl_c_callback_handler(int signum){
 
 void p_error(char* msg){
     perror(msg);
-    secure_exit(-1);
+    pthread_cond_signal(&data_cond);
 }
 
 void inv(char* msg){
     printf(msg);
-    secure_exit(-1);
+    pthread_cond_signal(&data_cond);
 }
 
-void secure_exit(int status){
+void secure_exit(){
     int i;
     
     pthread_mutex_lock(&mutex_data_cond);
@@ -796,6 +796,4 @@ void secure_exit(int status){
     pthread_cond_destroy (&data_cond);
 
     printf("\n[!] exiting from clipboard\n\n");
-    
-    exit(status);
 }

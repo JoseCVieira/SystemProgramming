@@ -2,11 +2,8 @@ duvidas:
 - esta certo copy paste da library??
 - devemos apagar primeiro os mutexes antes de apagar os shared memorys? (secure exit)
 - clipboard_close é so aquilo??
-- qd saimos de um clip vai fechar o socket e ja nao da para connecter localmente
-- secure exit
 - envio de dados null pela socket
 
 falta:
 - testes de validação
 - imprimir sun_paths
-- qd ocorre um erro nao sai do secure exit
