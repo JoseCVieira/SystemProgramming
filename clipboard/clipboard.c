@@ -38,10 +38,16 @@ int main(int argc, char* argv[]){
     // thread to handle accept local clients
     if(pthread_create(&thread_id, NULL, accept_local_client_handler, NULL) != 0)
         p_error(E_T_CREATE);
+    // detach thread so when it terminates, its resources are automatically released
+    if (pthread_detach(thread_id))
+        p_error(E_T_DETACH);
     
     // thread to handle accept remote clients
     if(pthread_create(&thread_id, NULL, accept_remote_client_handler, NULL) != 0)
         p_error(E_T_CREATE);
+    // detach thread so when it terminates, its resources are automatically released
+    if (pthread_detach(thread_id))
+        p_error(E_T_DETACH);
 
     // waits until all initial threads are created
     pthread_mutex_lock(&mutex_data_cond);
@@ -140,6 +146,9 @@ void* local_thread_handler(void* args){
             pthread_mutex_lock(&mutex_replicate);
             if(pthread_create(&thread_id, NULL, replicate_copy_cmd, (void *)&replicate) != 0) 
                 p_error(E_T_CREATE);
+            // detach thread so when it terminates, its resources are automatically released
+            if (pthread_detach(thread_id))
+                p_error(E_T_DETACH);
             
             // ensures that it is locked until copying replicate struct
             pthread_mutex_lock(&mutex_replicate);
@@ -345,6 +354,9 @@ void* remote_thread_handler(void *args){
         pthread_mutex_lock(&mutex_replicate);
         if(pthread_create(&thread_id, NULL, replicate_copy_cmd, (void *)&replicate) != 0) 
             p_error(E_T_CREATE);
+        // detach thread so when it terminates, its resources are automatically released
+        if (pthread_detach(thread_id))
+            p_error(E_T_DETACH);
         
         // ensures that it is locked until copying replicate struct
         pthread_mutex_lock(&mutex_replicate);
@@ -415,6 +427,9 @@ void* accept_local_client_handler(void *args){
         // create a new thread to handle the communication with the new local client
         if(pthread_create(&thread_id, NULL, local_thread_handler, (void *)&client) != 0)
             p_error(E_T_CREATE);
+        // detach thread so when it terminates, its resources are automatically released
+        if (pthread_detach(thread_id))
+            p_error(E_T_DETACH);
         
         // ensures that it is locked until client has been copied
         pthread_mutex_lock(&mutex_cpy_l_fd);
@@ -473,6 +488,9 @@ void* accept_remote_client_handler(void *args){
         // create a new thread to handle the communication with the new remote client
         if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&client) != 0)
             p_error(E_T_CREATE);
+        // detach thread so when it terminates, its resources are automatically released
+        if (pthread_detach(thread_id))
+            p_error(E_T_DETACH);
         
         // ensures that it is locked until client has been copied
         pthread_mutex_lock(&mutex_cpy_r_fd);
@@ -556,6 +574,7 @@ void* replicate_copy_cmd(void *args){
     }
     
     free(all_client_fd_aux);
+    free(replicate.data);
     
     printf("\t- exiting.\n\n");
     
@@ -622,6 +641,9 @@ void verifyInputArguments(int argc, char* argv[]){
         // create a new thread to handle the communication with the new remote client
         if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&remote) != 0)
             p_error(E_T_CREATE);
+        // detach thread so when it terminates, its resources are automatically released
+        if (pthread_detach(thread_id))
+            p_error(E_T_DETACH);
         
         // ensures that it is locked until copying client
         pthread_mutex_lock(&mutex_cpy_r_fd);

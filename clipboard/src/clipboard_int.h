@@ -54,6 +54,7 @@
 #define E_T_CREATE "[error] thread create"
 #define E_SET_FLAG "[error] set flag"
 #define E_TIME     "[error] time to wait"
+#define E_T_DETACH "[error] thread detach"
 
 #define I_INPUT_USAGE "[invalid] usage: ./clipboard < -c ip port >\n"
 #define I_OPTION      "[invalid] option\n"

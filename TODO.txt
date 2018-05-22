@@ -3,6 +3,8 @@ duvidas:
 - devemos apagar primeiro os mutexes antes de apagar os shared memorys? (secure exit)
 - clipboard_close é so aquilo??
 - envio de dados null pela socket
+- passar parametros para threads mutexes
+- valgrind
 
 falta:
 - testes de validação
