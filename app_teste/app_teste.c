@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <time.h>
 
-#include "../clipboard/src/clipboard.h"
+#include "src/clipboard.h"
 
 #define COPY 1
 #define PASTE 2

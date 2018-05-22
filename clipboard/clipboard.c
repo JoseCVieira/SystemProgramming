@@ -1,5 +1,8 @@
 #include "src/clipboard_int.h"
 
+// compile library.c :
+// gcc library.c -o library.so -ldl -shared -fPIC
+
 // mutexes
 pthread_mutex_t mutex_nr_user    = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_nr_threads = PTHREAD_MUTEX_INITIALIZER;

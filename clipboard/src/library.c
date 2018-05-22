@@ -5,11 +5,10 @@
 #include <unistd.h>
 #include "clipboard.h"
 
-#define SOCK_ADDRESS "/tmp/CLIPBOARD_SOCKET"
+#define NREGIONS 10
 #define COPY 1
 #define PASTE 2
 #define WAIT 3
-#define NREGIONS 10
 
 typedef struct s_message {
     int operation;
@@ -32,7 +31,7 @@ int clipboard_connect(char * clipboard_dir){
 
     /* Create server socket address => sun_family field always contains AF_UNIX | path to the socket */
     server_addr.sun_family = AF_UNIX;
-    strcpy(server_addr.sun_path, SOCK_ADDRESS);
+    strcpy(server_addr.sun_path, "./CLIPBOARD_SOCKET");
 
     /* Connect to clipboard (server) */
     if(connect(sock_fd, (const struct sockaddr *) &server_addr, sizeof(server_addr)) == -1)

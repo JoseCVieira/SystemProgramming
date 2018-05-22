@@ -16,7 +16,7 @@
 #include <ifaddrs.h>
 #include <errno.h>
 
-#define SOCK_ADDRESS "/tmp/CLIPBOARD_SOCKET"
+#define SOCK_ADDRESS "./CLIPBOARD_SOCKET"
 
 #define MSG_SIZE 100
 #define NREGIONS 10
