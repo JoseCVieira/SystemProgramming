@@ -1,11 +1,7 @@
 duvidas:
-- esta certo copy paste da library??
 - devemos apagar primeiro os mutexes antes de apagar os shared memorys? (secure exit)
-- clipboard_close é so aquilo??
-- envio de dados null pela socket
-- passar parametros para threads mutexes
-- valgrind
+- envio de dados null pela socket ('\0' => certo)
+- valgrind => ver melhor (nao perder muito tempo)
 
 falta:
 - testes de validação
-- imprimir sun_paths

@@ -1,20 +1,5 @@
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
+#include "clipboard_shared.h"
 #include "clipboard.h"
-
-#define NREGIONS 10
-#define COPY 1
-#define PASTE 2
-#define WAIT 3
-
-typedef struct s_message {
-    int operation;
-    int region;
-    size_t size;
-}message_t;
 
 int clipboard_connect(char * clipboard_dir){
     struct sockaddr_un server_addr;
@@ -44,8 +29,9 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
     message_t m;
     int result;
     
-    // dont let copy "nothing" to clipboard like computer's clipboard
-    if(count <= 0)
+    if(count < 0)
+        return 0;
+    else if (!count) // dont let copy "nothing" to clipboard like computer's clipboard
         return 1;
     
     /* pass values to struct */
@@ -83,8 +69,9 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
     message_t m;
     int result;
     
-    // dont let paste "nothing" like computer's clipboard
-    if(count <= 0)
+    if(count < 0)
+        return 0;
+    else if (!count) // dont let paste "nothing" like computer's clipboard
         return 1;
     
     /* pass values to struct */
@@ -125,7 +112,7 @@ int clipboard_wait(int clipboard_id, int region, void *buf, size_t count){
     
     // dont let wait for "nothing"
     if(count <= 0)
-        return 1;
+        return 0;
     
     /* pass values to struct */
     m.operation = WAIT;

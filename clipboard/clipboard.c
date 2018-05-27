@@ -148,9 +148,10 @@ void* local_thread_handler(void* args){
             // in a wait state
             replicate.client = client;
             replicate.message = m1;
-            replicate.data = NULL;
             if ((replicate.data = realloc(replicate.data, m1.size)) == NULL) p_error(E_REALLOC);
-            memcpy(replicate.data, message_clip, m1.size);
+            pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
+            memcpy(replicate.data, clipboard[m1.region].data, m1.size);
+            pthread_rwlock_unlock(&rwlock_clip[m1.region]);
             
             // thread to handle replication
             pthread_mutex_lock(&mutex_replicate);
@@ -279,7 +280,7 @@ void* remote_thread_handler(void *args){
             if(write(client.fd, message, sizeof m1) == -1)
                 p_error(E_WRITE);
             
-            // if this region have no data yet, then just sends a '\0' character
+            // if this region have no data yet, then do not send anything
             if(!(int)size){
                 printf("\t- sent[r]: region=%d | message=\n", region);
                 continue;
@@ -311,17 +312,17 @@ void* remote_thread_handler(void *args){
         // data to receive and the respective region
         memcpy(&m1, message, sizeof m1);
         
-        // from a clipboard the operation is always a copy, so if it receives
-        // "nothing", then nothing happens, as the real computer's clipboard does
+        printf("[log] thread: threadID=%lu \n", pthread_self());
+        
+        // from a clipboard, the operation is always a copy, so if it receives
+        // size = 0, then nothing happens, as the real computer's clipboard does
         if(!(int)m1.size){
             printf("\t- recv[r]: region=%d | message=\n", m1.region);
             continue;
         }
         
-        printf("[log] thread: threadID=%lu \n", pthread_self());
-        
         // realloc message to receive all data of this region
-        if ((message_clip = realloc(message_clip, m1.size)) == NULL)
+        if((message_clip = realloc(message_clip, m1.size)) == NULL)
             p_error(E_REALLOC);
         
         // clear clipboard region and reallocate memory of the region
@@ -355,9 +356,10 @@ void* remote_thread_handler(void *args){
         // in a wait state
         replicate.client = client;
         replicate.message = m1;
-        replicate.data = NULL;
         if ((replicate.data = realloc(replicate.data, m1.size)) == NULL) p_error(E_REALLOC);
-        memcpy(replicate.data, message_clip, m1.size);
+        pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
+        memcpy(replicate.data, clipboard[m1.region].data, m1.size);
+        pthread_rwlock_unlock(&rwlock_clip[m1.region]);
         
         // thread to handle replication
         pthread_mutex_lock(&mutex_replicate);
@@ -520,6 +522,12 @@ void* accept_remote_client_handler(void *args){
 // thread to handle the replication of data
 void* replicate_copy_cmd(void *args){
     replicate_t replicate = *((replicate_t *) args);
+    size_t size = replicate.message.size;
+    void* data = replicate.data;
+    replicate.data = NULL;
+    
+    replicate.data = realloc(replicate.data, size);
+    memcpy(replicate.data, data, size);
     pthread_mutex_unlock(&mutex_replicate);
 
     char message[sizeof(message_t)];

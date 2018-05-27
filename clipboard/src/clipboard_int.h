@@ -1,12 +1,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <sys/socket.h>
-#include <sys/un.h>
 #include <sys/time.h>
 #include <arpa/inet.h>
 
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
 #include <signal.h>
 #include <stdio.h>
@@ -16,14 +13,10 @@
 #include <ifaddrs.h>
 #include <errno.h>
 
+#include "clipboard_shared.h"
+
 #define SOCK_ADDRESS "./CLIPBOARD_SOCKET"
 
-#define MSG_SIZE 100
-#define NREGIONS 10
-
-#define COPY 1
-#define PASTE 2
-#define WAIT 3
 #define CLOSE 4
 
 #define NR_BACKLOG 10
@@ -60,12 +53,6 @@
 #define I_OPTION      "[invalid] option\n"
 #define I_IP          "[invalid] ip address\n"
 #define I_PORT        "[invalid] port\n"
-
-typedef struct s_message {
-    int operation;
-    int region;
-    size_t size;
-}message_t;
 
 typedef struct s_clipboard {
     void *data;
