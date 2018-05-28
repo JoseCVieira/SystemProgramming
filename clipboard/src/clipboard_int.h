@@ -74,7 +74,7 @@ typedef struct s_replicate {
 }replicate_t;
 
 // functions prototypes
-void update_client_fds(client_t client, int operation);
+int update_client_fds(client_t client, int operation);
 void verifyInputArguments(int argc, char *argv[]);
 client_t connect_server(char *ipAddress, int port);
 int isValidIpAddress(char *ipAddress);
@@ -93,4 +93,5 @@ void* local_thread_handler(void *args);
 void* replicate_copy_cmd(void *args);
 
 // sigaction handlers prototypes
-void ctrl_c_callback_handler(int signum);
+void ctrl_c_callback_handler();
+void broken_pipe_callback_handler();
