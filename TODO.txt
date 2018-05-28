@@ -2,6 +2,9 @@ duvidas:
 - devemos apagar primeiro os mutexes antes de apagar os shared memorys? (secure exit)
 - envio de dados null pela socket ('\0' => certo)
 - valgrind => ver melhor (nao perder muito tempo)
+- estrutura no shared.h
+- verificar inner loop copy (clipboard.c)
+- o que fazer quando nao existe memoria?
 
 falta:
 - testes de validação

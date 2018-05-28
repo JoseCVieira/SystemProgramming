@@ -361,8 +361,8 @@ void* remote_thread_handler(void *args){
             received += aux;
         }
         
-        if(received == -1)
-            break;
+        /*if(received == -1)
+            break;*/
         
         pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
         memcpy(clipboard[m1.region].data, message_clip, m1.size);
@@ -871,7 +871,7 @@ void broken_pipe_callback_handler() {
     act.sa_flags = SA_RESTART;
     
     if(sigaction(SIGPIPE, &act, NULL))
-        err(1, "sigaction");
+        perror(E_SIG);
 }
 
 void p_error(char* msg){
