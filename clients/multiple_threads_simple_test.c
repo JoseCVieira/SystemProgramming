@@ -15,43 +15,89 @@
 #include <pthread.h>
 #include <ifaddrs.h>
 #include <errno.h>
-
+#include "app_test.c"
 #include "../library/clipboard.h"
 
 #define NTHREADS 1
 #define NREGIONS 10
 #define MSGSIZE 100
 
-void print_with_time(char * user_msg);
+/*TEST ROUTINES*/
+#define CPY_ONLY 0
+#define CPY_ONLY_STR "-cp"
+#define CPY_PASTE 1
+#define CPY_PASTE_STR "-cpp"
+#define MULT_CONN 2
+#define MULT_CONN_STR "-c"
+#define TOTAL_OPT 4
+
+int verifyInputArgs(int argc, char *argv[]);
 void test_string(char * user_msg,int id, int i);
-void * thread_handler(void * args);
+/*thread handlers*/
+void *thread_cpy_paste_h(void * args);
+void *thread_cpy_h(void * args);
+/*optional test functions*/
+void test_cpy(void);
+void test_cpy_paste(void);
+/*to clarify*/
+void test_mult_conn(void);
+void app_test(void);
+/*struct connect*/
+
 
 pthread_cond_t data_cond = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t mutex    = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_nr = PTHREAD_MUTEX_INITIALIZER;
 
 int nr = 0;
+int nthreads_val = NTHREADS;
+void (*test_functions[TOTAL_OPT]) = {test_cpy, test_cpy_paste, test_mult_conn, app_test};
 
-int main(){
-    int i;
+int main(int argc, char *argv[]){
     pthread_t thread_id;
+    int  *retval = NULL, test_routine;
+    test_routine = verifyInputArgs(argc, argv);
+    pthread_create(&thread_id, NULL, test_functions[test_routine], NULL);
 
-    for(i = 0; i < NTHREADS; i++){
-        pthread_mutex_lock(&mutex);
-
-        if(pthread_create(&thread_id, NULL, thread_handler, &i) != 0)
-            printf("erro");
-
-        pthread_mutex_lock(&mutex);
-        pthread_mutex_unlock(&mutex);
-    }
-
-    while(nr != NTHREADS);
-
+    pthread_join(thread_id, (void *)retval);
     return 0;
 }
+void * thread_cpy_h(void * args){
+  int i, id = *((int*)args);
+  pthread_mutex_unlock(&mutex);
 
-void * thread_handler(void * args){
+  char *buf;
+
+  if ((buf = (char*) malloc(  MSGSIZE * sizeof(char) )) == NULL){
+      perror("[error] malloc");
+      exit(-1);
+  }
+
+  int sock_fd = clipboard_connect(buf);
+  sprintf(buf, "./socket_%d", getpid());
+
+  if(sock_fd == -1){
+      perror("[error] connect");
+      exit(-1);
+  }
+
+  for(i = 0; i < NREGIONS; i++){
+      test_string(buf,id, i);
+      clipboard_copy(sock_fd, i, buf, MSGSIZE);
+  }
+
+  clipboard_close(sock_fd);
+
+  free(buf);
+
+  pthread_mutex_lock(&mutex);
+  nr++;
+  pthread_mutex_unlock(&mutex);
+
+  pthread_exit(NULL);
+}
+
+void * thread_cpy_paste_h(void * args){
     int i, id = *((int*)args);
     pthread_mutex_unlock(&mutex);
 
@@ -70,12 +116,12 @@ void * thread_handler(void * args){
         exit(-1);
     }
 
-    for(i = 0; i < NREGIONS; i++){
+    for(i = 0; i < nthreads_val; i++){
         test_string(buf,id, i);
         clipboard_copy(sock_fd, i, buf, MSGSIZE);
     }
 
-    for(i = 0; i < NREGIONS; i++){
+    for(i = 0; i < nthreads_val; i++){
         clipboard_paste(sock_fd, i, buf, MSGSIZE);
         printf("%s\n", buf);
     }
@@ -91,13 +137,63 @@ void * thread_handler(void * args){
     pthread_exit(NULL);
 }
 
-void print_with_time(char * user_msg){
-    struct tm *tm_struct;
-    time_t time_v = time(NULL);
-    tm_struct = localtime(&time_v);
-    printf("<%02d:%02d:%02d> %s\n", tm_struct->tm_hour, tm_struct->tm_min, tm_struct->tm_sec, user_msg);
+void test_cpy(){
+  int i;
+  pthread_t thread_id;
+  for(i = 0; i < nthreads_val; i++){
+      pthread_mutex_lock(&mutex);
+
+      if(pthread_create(&thread_id, NULL, thread_cpy_h, &i) != 0)
+          printf("erro");
+
+      pthread_mutex_lock(&mutex);
+      pthread_mutex_unlock(&mutex);
+  }
+
+  while(nr != nthreads_val);
 }
 
+void test_cpy_paste(){
+  int i;
+  pthread_t thread_id;
+  for(i = 0; i < nthreads_val; i++){
+      pthread_mutex_lock(&mutex);
+
+      if(pthread_create(&thread_id, NULL, thread_cpy_paste_h, &i) != 0)
+          printf("erro");
+
+      pthread_mutex_lock(&mutex);
+      pthread_mutex_unlock(&mutex);
+  }
+
+  while(nr != nthreads_val);
+}
+
+void test_mult_conn(){
+
+}
+
+int verifyInputArgs(int argc, char *argv[]){
+  int i;
+  if(argc > 1){
+    for(i =0; i < argc; i++){
+      if(strcmp(argv[i],CPY_ONLY_STR) == 0){
+        if(argv[i+1] != NULL)
+          nthreads_val = atoi(argv[i+1]);
+        return CPY_ONLY;
+      }else if(strcmp(argv[i], CPY_PASTE_STR) == 0){
+        if(argv[i+1] != NULL)
+          nthreads_val = atoi(argv[i+1]);
+        return CPY_PASTE;
+      }else if(strcmp(argv[i], MULT_CONN_STR) == 0){
+        return TOTAL_OPT-1;
+      }
+    }
+
+  }
+  return TOTAL_OPT-1;
+
+}
 void test_string(char * user_msg, int id, int i){
     struct tm *tm_struct;
     struct timeval tv;
@@ -107,7 +203,6 @@ void test_string(char * user_msg, int id, int i){
         exit(-1);
     }
     gettimeofday(&tv, 0);
-    printf("%lu:%lu\n",tv.tv_sec, tv.tv_usec);
     time_t time_v = time(NULL);
     tm_struct = localtime(&time_v);
     sprintf(user_msg, "<%02d:%02d:%02d:%04lu> thread with ID: %d wrote on region %d\n",tm_struct->tm_hour, tm_struct->tm_min, tm_struct->tm_sec,tv.tv_usec, id, i);

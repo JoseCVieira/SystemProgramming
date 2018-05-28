@@ -20,7 +20,7 @@ struct tm *tm_struct;
 
 void print_with_time(char * user_msg);
 
-int main(){
+void app_test(void){
     int region, operation;
     char *buf = NULL, socket_name[20];
     size_t count, n = 0;
@@ -36,7 +36,7 @@ int main(){
     printf("| wait  - 3 <region> <length>  |\n");
     printf("| close - 4                    |\n");
     printf("+------------------------------+\n");
-    
+
     /* Connect to clipboard (server) */
     sprintf(socket_name, "./socket_%d", getpid());
     int sock_fd = clipboard_connect(socket_name);
@@ -47,22 +47,22 @@ int main(){
 
     while(1){
         printf("\noption: ");
-        
+
         n = 0;
         nchr = 0;
 
         if(buf != NULL && strlen(buf))
             memset(buf, 0, strlen(buf));
-        
+
         if ((nchr = getline (&buf, &n, stdin)) != -1)
             buf[--nchr] = 0;  // strip newline
-        
+
         if(isdigit(buf[0]) && isdigit(buf[2])){
-            
+
             /* pass values to struct clipboard */
             operation = buf[0] - '0';
             region = buf[2] - '0';
-            
+
             memmove(buf, buf+4, (nchr+4) + 4);
 
             if(operation == COPY){
@@ -76,7 +76,7 @@ int main(){
                     print_with_time("communication error.");
                 else
                     print_with_time(buf);
-                
+
             }else if(operation == WAIT){
                 count = atoi(buf);
                 print_with_time("waiting...\n");
@@ -86,7 +86,7 @@ int main(){
                     print_with_time(buf);
             }else
                 print_with_time("invalid option.");
-           
+
         }else if(isdigit(buf[0])){
             operation = buf[0] - '0';
             if(operation == CLOSE){
@@ -94,14 +94,16 @@ int main(){
                 print_with_time("close socket and exiting\n");
                 exit(0);
             }else
-                print_with_time("invalid option."); 
+                print_with_time("invalid option.");
         }else
             print_with_time("invalid option.");
     }
 }
 
 void print_with_time(char * user_msg){
+    struct timeval tv;
+    gettimeofday(&tv, 0);
     time_t time_v = time(NULL);
     tm_struct = localtime(&time_v);
-    printf("<%02d:%02d:%02d> %s\n", tm_struct->tm_hour, tm_struct->tm_min, tm_struct->tm_sec, user_msg);
+    printf("<%02d:%02d:%02d:%04lu> %s\n", tm_struct->tm_hour, tm_struct->tm_min, tm_struct->tm_sec, tv.tv_usec, user_msg);
 }
