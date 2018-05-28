@@ -1,8 +1,5 @@
 #include "src/clipboard_int.h"
 
-// compile library.c :
-// gcc library.c -o library.so -ldl -shared -fPIC
-
 // mutexes
 pthread_mutex_t mutex_nr_user    = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_nr_threads = PTHREAD_MUTEX_INITIALIZER;
@@ -127,10 +124,13 @@ void* local_thread_handler(void* args){
             
             // receive data until size is the same as the previous size received
             received = 0;
-            while(received != m1.size){
+            while(received < m1.size){
                 memset(message_clip, 0, m1.size);
                 if((aux = recv(client.fd, message_clip, m1.size - received, 0)) == -1)
                     p_error(E_RECV);
+                
+                if((received + aux) > m1.size)
+                    aux = m1.size - received;
                 
                 pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
                 memcpy(clipboard[m1.region].data + received, message_clip, aux);
@@ -335,10 +335,13 @@ void* remote_thread_handler(void *args){
         
         // receive data until size is the same as the previous size received 
         received = 0;
-        while(received != m1.size){
+        while(received < m1.size){
             memset(message_clip, 0, m1.size);
             if((aux = recv(client.fd, message_clip, m1.size - received, 0)) == -1)
                 p_error(E_RECV);
+            
+            if((received + aux) > m1.size)
+                aux = m1.size - received;
             
             pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
             memcpy(clipboard[m1.region].data + received, message_clip, aux);
