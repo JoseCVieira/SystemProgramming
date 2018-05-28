@@ -16,7 +16,7 @@
 #include <pthread.h>
 #include <ifaddrs.h>
 #include <errno.h>
-#include "../clipboard/src/clipboard.h"
+#include "../library/clipboard.h"
 #define NTHREADS 7
 #define NREGIONS 10
 #define MSGSIZE 100
