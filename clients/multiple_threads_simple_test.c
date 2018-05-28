@@ -40,7 +40,7 @@ int main(int argv, char *argc[]){
       pthread_mutex_lock(&id_mutex);
       if(pthread_create(&thread_id, NULL, thread_handler, &i) != 0)
           printf("erro");
-          
+
       pthread_mutex_lock(&id_mutex);
       pthread_mutex_unlock(&id_mutex);
     }
