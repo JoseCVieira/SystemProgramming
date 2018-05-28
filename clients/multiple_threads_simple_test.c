@@ -16,9 +16,9 @@
 #include <ifaddrs.h>
 #include <errno.h>
 
-#include "src/clipboard.h"
+#include "../library/clipboard.h"
 
-#define NTHREADS 30
+#define NTHREADS 1
 #define NREGIONS 10
 #define MSGSIZE 100
 
@@ -33,7 +33,7 @@ pthread_mutex_t mutex_nr = PTHREAD_MUTEX_INITIALIZER;
 int nr = 0;
 
 int main(){
-    int i, retval;
+    int i;
     pthread_t thread_id;
 
     for(i = 0; i < NTHREADS; i++){
@@ -100,13 +100,15 @@ void print_with_time(char * user_msg){
 
 void test_string(char * user_msg, int id, int i){
     struct tm *tm_struct;
+    struct timeval tv;
 
     if (realloc(user_msg, 100*sizeof(char) ) == NULL){
         perror("[error] malloc");
         exit(-1);
     }
-
+    gettimeofday(&tv, 0);
+    printf("%lu:%lu\n",tv.tv_sec, tv.tv_usec);
     time_t time_v = time(NULL);
     tm_struct = localtime(&time_v);
-    sprintf(user_msg, "<%02d:%02d:%02d> thread with ID: %d wrote on region %d\n",tm_struct->tm_hour, tm_struct->tm_min, tm_struct->tm_sec, id, i);
+    sprintf(user_msg, "<%02d:%02d:%02d:%04lu> thread with ID: %d wrote on region %d\n",tm_struct->tm_hour, tm_struct->tm_min, tm_struct->tm_sec,tv.tv_usec, id, i);
 }
