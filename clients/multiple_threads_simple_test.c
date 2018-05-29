@@ -16,7 +16,7 @@
 #include <ifaddrs.h>
 #include <errno.h>
 
-#include "src/clipboard.h"
+#include "../clipboard/src/clipboard.h"
 
 #define NTHREADS 30
 #define NREGIONS 10
