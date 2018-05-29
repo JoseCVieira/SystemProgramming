@@ -1,0 +1,11 @@
+execute make multiple_threads
+
+then go to runs
+
+execute ./client <option> [val] 
+	options:
+		-c multiple connections (to implement)
+		-cp multiple threads copying - [val] number of threads
+		-cpp multiple threads copying and pasting - [val] number 
+of threads
+		any other option - app_test example
