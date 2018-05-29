@@ -42,7 +42,7 @@ void test_cpy_paste(void);
 /*to clarify*/
 void test_mult_conn(void);
 void app_test(void);
-/*struct connect*/
+
 
 
 pthread_cond_t data_cond = PTHREAD_COND_INITIALIZER;
@@ -50,6 +50,7 @@ pthread_mutex_t mutex    = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_nr = PTHREAD_MUTEX_INITIALIZER;
 
 int nr = 0;
+int def_region = NREGIONS;
 int nthreads_val = NTHREADS;
 void (*test_functions[TOTAL_OPT]) = {test_cpy, test_cpy_paste, test_mult_conn, app_test};
 
@@ -80,12 +81,15 @@ void * thread_cpy_h(void * args){
       perror("[error] connect");
       exit(-1);
   }
-
-  for(i = 0; i < NREGIONS; i++){
-      test_string(buf,id, i);
-      clipboard_copy(sock_fd, i, buf, MSGSIZE);
+  printf("%d\n", def_region);
+  if(def_region >= NREGIONS || def_region < 0){
+    for(i = 0; i < NREGIONS; i++){
+        test_string(buf,id, i);
+        clipboard_copy(sock_fd, i, buf, MSGSIZE);
+    }
+  }else{
+    clipboard_copy(sock_fd, def_region, buf, MSGSIZE);
   }
-
   clipboard_close(sock_fd);
 
   free(buf);
@@ -115,15 +119,21 @@ void * thread_cpy_paste_h(void * args){
         perror("[error] connect");
         exit(-1);
     }
+    if(def_region >= NREGIONS || def_region < 0){
+      for(i = 0; i < nthreads_val; i++){
+          test_string(buf,id, i);
+          clipboard_copy(sock_fd, i, buf, MSGSIZE);
+      }
 
-    for(i = 0; i < nthreads_val; i++){
-        test_string(buf,id, i);
-        clipboard_copy(sock_fd, i, buf, MSGSIZE);
-    }
-
-    for(i = 0; i < nthreads_val; i++){
-        clipboard_paste(sock_fd, i, buf, MSGSIZE);
-        printf("%s\n", buf);
+      for(i = 0; i < nthreads_val; i++){
+          clipboard_paste(sock_fd, i, buf, MSGSIZE);
+          printf("%s\n", buf);
+      }
+    }else{
+      test_string(buf,id, def_region);
+      clipboard_copy(sock_fd, def_region, buf, MSGSIZE);
+      clipboard_paste(sock_fd, def_region, buf, MSGSIZE);
+      printf("%s\n", buf);
     }
 
     clipboard_close(sock_fd);
@@ -180,10 +190,14 @@ int verifyInputArgs(int argc, char *argv[]){
       if(strcmp(argv[i],CPY_ONLY_STR) == 0){
         if(argv[i+1] != NULL)
           nthreads_val = atoi(argv[i+1]);
+        if(argv[i+2] != NULL)
+            def_region = atoi(argv[i+2]);
         return CPY_ONLY;
       }else if(strcmp(argv[i], CPY_PASTE_STR) == 0){
         if(argv[i+1] != NULL)
           nthreads_val = atoi(argv[i+1]);
+        if(argv[i+2] != NULL)
+          def_region = atoi(argv[i+2]);
         return CPY_PASTE;
       }else if(strcmp(argv[i], MULT_CONN_STR) == 0){
         return TOTAL_OPT-1;
