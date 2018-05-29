@@ -24,12 +24,10 @@
 
 /*TEST ROUTINES*/
 #define CPY_ONLY 0
-#define CPY_ONLY_STR "-cp"
+#define CPY_ONLY_STR "-c"
 #define CPY_PASTE 1
-#define CPY_PASTE_STR "-cpp"
-#define MULT_CONN 2
-#define MULT_CONN_STR "-c"
-#define TOTAL_OPT 4
+#define CPY_PASTE_STR "-cp"
+#define TOTAL_OPT 3
 
 int verifyInputArgs(int argc, char *argv[]);
 void test_string(char * user_msg,int id, int i);
@@ -39,8 +37,6 @@ void *thread_cpy_h(void * args);
 /*optional test functions*/
 void test_cpy(void);
 void test_cpy_paste(void);
-/*to clarify*/
-void test_mult_conn(void);
 void app_test(void);
 
 
@@ -52,17 +48,19 @@ pthread_mutex_t mutex_nr = PTHREAD_MUTEX_INITIALIZER;
 int nr = 0;
 int def_region = NREGIONS;
 int nthreads_val = NTHREADS;
-void (*test_functions[TOTAL_OPT]) = {test_cpy, test_cpy_paste, test_mult_conn, app_test};
+void (*test_functions[TOTAL_OPT]) = {test_cpy, test_cpy_paste, app_test};
 
 int main(int argc, char *argv[]){
     pthread_t thread_id;
     int  *retval = NULL, test_routine;
     test_routine = verifyInputArgs(argc, argv);
-    pthread_create(&thread_id, NULL, test_functions[test_routine], NULL);
+    pthread_create(&thread_id, NULL, test_functions[test_routine], &test_routine);
 
     pthread_join(thread_id, (void *)retval);
     return 0;
 }
+
+/*thread handler copy case only*/
 void * thread_cpy_h(void * args){
   int i, id = *((int*)args);
   pthread_mutex_unlock(&mutex);
@@ -81,15 +79,17 @@ void * thread_cpy_h(void * args){
       perror("[error] connect");
       exit(-1);
   }
-  printf("%d\n", def_region);
+
   if(def_region >= NREGIONS || def_region < 0){
     for(i = 0; i < NREGIONS; i++){
         test_string(buf,id, i);
         clipboard_copy(sock_fd, i, buf, MSGSIZE);
     }
   }else{
+    test_string(buf,id, def_region);
     clipboard_copy(sock_fd, def_region, buf, MSGSIZE);
   }
+
   clipboard_close(sock_fd);
 
   free(buf);
@@ -100,6 +100,8 @@ void * thread_cpy_h(void * args){
 
   pthread_exit(NULL);
 }
+
+/*thread handler copy and paste case only*/
 
 void * thread_cpy_paste_h(void * args){
     int i, id = *((int*)args);
@@ -119,6 +121,8 @@ void * thread_cpy_paste_h(void * args){
         perror("[error] connect");
         exit(-1);
     }
+
+
     if(def_region >= NREGIONS || def_region < 0){
       for(i = 0; i < nthreads_val; i++){
           test_string(buf,id, i);
@@ -147,6 +151,7 @@ void * thread_cpy_paste_h(void * args){
     pthread_exit(NULL);
 }
 
+/*calling test function cpy*/
 void test_cpy(){
   int i;
   pthread_t thread_id;
@@ -163,6 +168,7 @@ void test_cpy(){
   while(nr != nthreads_val);
 }
 
+/*calling test function cpy and paste*/
 void test_cpy_paste(){
   int i;
   pthread_t thread_id;
@@ -179,10 +185,7 @@ void test_cpy_paste(){
   while(nr != nthreads_val);
 }
 
-void test_mult_conn(){
-
-}
-
+/*Input verification*/
 int verifyInputArgs(int argc, char *argv[]){
   int i;
   if(argc > 1){
@@ -199,11 +202,8 @@ int verifyInputArgs(int argc, char *argv[]){
         if(argv[i+2] != NULL)
           def_region = atoi(argv[i+2]);
         return CPY_PASTE;
-      }else if(strcmp(argv[i], MULT_CONN_STR) == 0){
-        return TOTAL_OPT-1;
       }
     }
-
   }
   return TOTAL_OPT-1;
 
