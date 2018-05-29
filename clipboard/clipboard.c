@@ -7,6 +7,7 @@ pthread_mutex_t mutex_cpy_l_fd   = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_cpy_r_fd   = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_replicate  = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_data_cond  = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex_replicat   = PTHREAD_MUTEX_INITIALIZER;
 
 // cond. variable
 pthread_cond_t data_cond = PTHREAD_COND_INITIALIZER;
@@ -152,6 +153,7 @@ void* local_thread_handler(void* args){
             replicate.client = client;
             replicate.message = m1;
             if ((replicate.data = realloc(replicate.data, m1.size)) == NULL) p_error(E_REALLOC);
+            
             pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
             memcpy(replicate.data, clipboard[m1.region].data, m1.size);
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
@@ -275,7 +277,6 @@ void* remote_thread_handler(void *args){
     pthread_mutex_unlock(&mutex_nr_threads);
     
     printf("[log] thread: threadID=%lu\n\t- was created to handle communication with the new remote client: %s\n", pthread_self(), client.sin_addr);
-
     // if some other clipboard have connected to this clipboard, then
     // this one, sends all the current clipboard data from all regions
     if(client.fd != r_out_sock_fd){
@@ -324,7 +325,7 @@ void* remote_thread_handler(void *args){
 
     // waits until a new message arrives from the local client or break loop when
     // it receives a 0 (end of file)
-    while(recv(client.fd, message, sizeof(message_t), 0) > 0){
+    while(recv(client.fd, message, sizeof m1, 0) > 0){
         
         // convert the received data into a well defined struct
         // that contains the operation to make, the size os the
@@ -361,8 +362,8 @@ void* remote_thread_handler(void *args){
             received += aux;
         }
         
-        /*if(received == -1)
-            break;*/
+        if(received == -1)
+            break;
         
         pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
         memcpy(clipboard[m1.region].data, message_clip, m1.size);
@@ -498,6 +499,9 @@ void* accept_remote_client_handler(void *args){
     pthread_t thread_id;
     client_t client;
     
+    memset(&client_addr, 0, sizeof(client_addr));
+    client_addr.sin_family = AF_INET;
+    
     printf("\n[log] thread: threadID=%lu\n\t- was created to handle accept remote clients\n", pthread_self());
     
     client.type = REMOTE_C;
@@ -603,11 +607,19 @@ void* replicate_copy_cmd(void *args){
             // if file descriptor is different from the received (the clipboard that have sent data to this one) or if it was a local client
             // that send data, then,
             if((all_client_fd_aux[i].fd != replicate.client.fd && replicate.client.type >= REMOTE_C) || replicate.client.type == LOCAL){
+                
+                pthread_mutex_lock(&mutex_replicat);
+                
 
                 // send message info
                 if(write(all_client_fd_aux[i].fd, message, sizeof(message_t)) == -1) {
                     shutdown(all_client_fd_aux[i].fd, SHUT_RDWR); // if an error occur, then close the client fd and the resposible thread will receive and EOF that will
                     close(all_client_fd_aux[i].fd);               // be resposible to do the safe remove of this client
+                }
+                
+                if(!(int)size){
+                    printf("\t- sent[r]: region=%d | message=\n", replicate.message.region);
+                    continue;
                 }
                 
                 // send the actual data
@@ -616,7 +628,7 @@ void* replicate_copy_cmd(void *args){
                     close(all_client_fd_aux[i].fd);
                 }
                 
-                printf("\t- sent[r]: region=%d | message=%s\n", replicate.message.region, (char*)replicate.data);
+                pthread_mutex_unlock(&mutex_replicat);
             }
             
         // if the client is a local client and it is in the waitng state and it is waiting for this region, then
@@ -922,6 +934,7 @@ void secure_exit(int flag){
     pthread_mutex_destroy(&mutex_cpy_l_fd);
     pthread_mutex_destroy(&mutex_cpy_r_fd);
     pthread_mutex_destroy(&mutex_replicate);
+    pthread_mutex_destroy(&mutex_replicat);
     pthread_mutex_destroy(&mutex_data_cond);
     pthread_cond_destroy (&data_cond);
 
