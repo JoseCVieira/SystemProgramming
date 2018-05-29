@@ -18,13 +18,12 @@
 #include "app_test.c"
 #include "../library/clipboard.h"
 
-<<<<<<< HEAD
+
 #include "../clipboard/src/clipboard.h"
 
-#define NTHREADS 30
-=======
+
 #define NTHREADS 1
->>>>>>> d7290b4d78e6aadbb911a6f16efe6f0938943a30
+
 #define NREGIONS 10
 #define MSGSIZE 100
 
