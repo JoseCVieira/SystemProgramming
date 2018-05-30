@@ -30,16 +30,20 @@
 #define CPY_ONLY_STR "-c"
 #define CPY_PASTE 1
 #define CPY_PASTE_STR "-cp"
-#define TOTAL_OPT 3
+#define PASTE_ONLY 2
+#define PASTE_ONLY_STR "-p"
+#define TOTAL_OPT 4
 
 int verifyInputArgs(int argc, char *argv[]);
 void test_string(char * user_msg,int id, int i);
 /*thread handlers*/
 void *thread_cpy_paste_h(void * args);
 void *thread_cpy_h(void * args);
+void *thread_paste_h(void * args);
 /*optional test functions*/
 void test_cpy(void);
 void test_cpy_paste(void);
+void test_paste(void);
 void app_test(void);
 
 
@@ -51,7 +55,7 @@ pthread_mutex_t mutex_nr = PTHREAD_MUTEX_INITIALIZER;
 int nr = 0;
 int def_region = NREGIONS;
 int nthreads_val = NTHREADS;
-void (*test_functions[TOTAL_OPT]) = {test_cpy, test_cpy_paste, app_test};
+void (*test_functions[TOTAL_OPT]) = {test_cpy, test_cpy_paste,test_paste, app_test};
 
 int main(int argc, char *argv[]){
     pthread_t thread_id;
@@ -104,6 +108,47 @@ void * thread_cpy_h(void * args){
   pthread_exit(NULL);
 }
 
+
+/*thread handler copy case only*/
+void * thread_paste_h(void * args){
+  int i;
+  pthread_mutex_unlock(&mutex);
+
+  char *buf;
+
+  if ((buf = (char*) malloc(  MSGSIZE * sizeof(char) )) == NULL){
+      perror("[error] malloc");
+      exit(-1);
+  }
+
+  int sock_fd = clipboard_connect(buf);
+  sprintf(buf, "./socket_%d", getpid());
+
+  if(sock_fd == -1){
+      perror("[error] connect");
+      exit(-1);
+  }
+
+  if(def_region >= NREGIONS || def_region < 0){
+    for(i = 0; i < NREGIONS; i++){
+        clipboard_paste(sock_fd, i, buf, MSGSIZE);
+        printf("%s\n", buf);
+    }
+  }else{
+    clipboard_paste(sock_fd, def_region, buf, MSGSIZE);
+    printf("%s\n", buf);
+  }
+
+  clipboard_close(sock_fd);
+
+  free(buf);
+
+  pthread_mutex_lock(&mutex);
+  nr++;
+  pthread_mutex_unlock(&mutex);
+
+  pthread_exit(NULL);
+}
 /*thread handler copy and paste case only*/
 
 void * thread_cpy_paste_h(void * args){
@@ -170,7 +215,22 @@ void test_cpy(){
 
   while(nr != nthreads_val);
 }
+/*calling test function cpy*/
+void test_paste(){
+  int i;
+  pthread_t thread_id;
+  for(i = 0; i < nthreads_val; i++){
+      pthread_mutex_lock(&mutex);
 
+      if(pthread_create(&thread_id, NULL, thread_paste_h, &i) != 0)
+          printf("erro");
+
+      pthread_mutex_lock(&mutex);
+      pthread_mutex_unlock(&mutex);
+  }
+
+  while(nr != nthreads_val);
+}
 /*calling test function cpy and paste*/
 void test_cpy_paste(){
   int i;
@@ -205,6 +265,12 @@ int verifyInputArgs(int argc, char *argv[]){
         if(argv[i+2] != NULL)
           def_region = atoi(argv[i+2]);
         return CPY_PASTE;
+      }else if(strcmp(argv[i],PASTE_ONLY_STR) == 0){
+        if(argv[i+1] != NULL)
+          nthreads_val = atoi(argv[i+1]);
+        if(argv[i+2] != NULL)
+            def_region = atoi(argv[i+2]);
+        return PASTE_ONLY;
       }
     }
   }
