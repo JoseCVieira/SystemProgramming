@@ -28,6 +28,7 @@ int clipboard_connect(char * clipboard_dir){
 int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
     message_t m;
     int result;
+    char flag;
     
     if(count < 0)
         return 0;
@@ -55,7 +56,13 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
             return 0;
         }
         
-        free(message);     
+        free(message);   
+        
+        if((result = read(clipboard_id, &flag, 1)) == -1)
+            return 0;
+        
+        if(!flag) 
+            return 0;
         
         /* send buf to socket */
         if((result = write(clipboard_id, buf, count)) == -1)
@@ -68,6 +75,7 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
 int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
     message_t m;
     int result;
+    char flag;
     
     if(count < 0)
         return 0;
@@ -96,6 +104,12 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
         }
 
         free(message);
+        
+        if((result = read(clipboard_id, &flag, 1)) == -1)
+            return 0;
+        
+        if(!flag) 
+            return 0;
         
         /* read response from clipboard */
         if((result = read(clipboard_id, buf, count)) == -1)

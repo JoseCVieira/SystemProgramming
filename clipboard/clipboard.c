@@ -1,5 +1,7 @@
 #include "src/clipboard_int.h"
 
+#define DEBUG
+
 // mutexes
 pthread_mutex_t mutex_nr_user    = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t mutex_nr_threads = PTHREAD_MUTEX_INITIALIZER;
@@ -81,7 +83,7 @@ void* local_thread_handler(void* args){
     
     char message[sizeof(message_t)];
     void *message_clip = NULL;
-    char clean_char = '\0';
+    char clean_char = '\0', flag;
     size_t size, received, aux;
     int i;
     replicate_t replicate;
@@ -103,7 +105,9 @@ void* local_thread_handler(void* args){
     nr_threads++;
     pthread_mutex_unlock(&mutex_nr_threads);
     
+    #ifdef DEBUG
     printf("[log] thread: threadID=%lu\n\t- was created to handle communication with the new local client\n\n", pthread_self());
+    #endif
 
     // waits until a new message arrives from the local client or break loop when
     // it receives a 0 (end of file)
@@ -114,15 +118,41 @@ void* local_thread_handler(void* args){
         // data to receive and the respective region
         memcpy(&m1, message, sizeof m1);
         
+        #ifdef DEBUG
         printf("[log] thread: threadID=%lu\n", pthread_self());
+        #endif
         
-        if ((message_clip = realloc(message_clip, m1.size)) == NULL) p_error(E_REALLOC);
+        flag = 1;
+        if ((message_clip = realloc(message_clip, m1.size)) == NULL){
+            perror(E_REALLOC);
+            flag = 0;
+            if(write(client.fd, &flag, 1) == -1) {
+                perror(E_WRITE); // print the error and close the client
+                break;
+            }
+            continue;
+        }
 
         if(m1.operation == COPY) {
             // clear clipboard region and reallocate memory of the region
             pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
             memset(clipboard[m1.region].data, 0, clipboard[m1.region].size);
-            if ((clipboard[m1.region].data = realloc(clipboard[m1.region].data, m1.size)) == NULL) p_error(E_REALLOC);
+            if ((clipboard[m1.region].data = realloc(clipboard[m1.region].data, m1.size)) == NULL){
+                perror(E_REALLOC);
+                flag = 0;
+                if(write(client.fd, &flag, 1) == -1) {
+                    perror(E_WRITE);
+                    break;
+                }
+                continue;
+            }
+            
+            // write to client success or error when allocating memory
+            if(write(client.fd, &flag, 1) == -1) {
+                perror(E_WRITE);
+                break;
+            }
+            
             clipboard[m1.region].size = m1.size;
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
             
@@ -143,20 +173,18 @@ void* local_thread_handler(void* args){
             memcpy(clipboard[m1.region].data, message_clip, m1.size);
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
             
+            #ifdef DEBUG
             pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
             printf("\t- recv[l]: region=%d | message=%s\n", m1.region, (char*)clipboard[m1.region].data);
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
+            #endif
 
             // thread to handle replication of this region for all remote clipboards 
             // except the one that asks the copy and for some local app that is locked
             // in a wait state
             replicate.client = client;
             replicate.message = m1;
-            if ((replicate.data = realloc(replicate.data, m1.size)) == NULL) p_error(E_REALLOC);
-            
-            pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
-            memcpy(replicate.data, clipboard[m1.region].data, m1.size);
-            pthread_rwlock_unlock(&rwlock_clip[m1.region]);
+            replicate.data = message_clip;
             
             // thread to handle replication
             pthread_mutex_lock(&mutex_replicate);
@@ -174,8 +202,18 @@ void* local_thread_handler(void* args){
             pthread_mutex_lock(&mutex_replicate);
             pthread_mutex_unlock(&mutex_replicate);
             
+            replicate.data = NULL;
+            free(message_clip);
+            message_clip = NULL;
+            
 
         }else if(m1.operation == PASTE){
+            
+            // write to client success or error when allocating memory
+            if(write(client.fd, &flag, 1) == -1) {
+                perror(E_WRITE);
+                break;
+            }
             
             pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
             size = clipboard[m1.region].size;
@@ -193,20 +231,26 @@ void* local_thread_handler(void* args){
                     break;
                 }
                 
+                #ifdef DEBUG
                 pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
                 printf("\t- sent[l]: region=%d | message=%s\n\n", m1.region, (char*)clipboard[m1.region].data);
                 pthread_rwlock_unlock(&rwlock_clip[m1.region]);
+                #endif
             }else{
                 // nothing to send. just send a '\0' character
                 if(write(client.fd, &clean_char, m1.size) == -1) {
                     perror(E_WRITE); // print the error and close the client
                     break;
                 }
+                #ifdef DEBUG
                 printf("\t- sent[l]: region=%d | message=\n\n", m1.region);
+                #endif
             }
         }else if(m1.operation == WAIT){
             
+            #ifdef DEBUG
             printf("\t- recv[l]: region=%d | wait signal\n\n", m1.region);
+            #endif
             pthread_mutex_lock(&mutex_nr_user);
             
             // searches in the list of all clients of this clipboard and put the client
@@ -223,7 +267,9 @@ void* local_thread_handler(void* args){
         }
         
     }
+    #ifdef DEBUG
     printf("[log] thread: threadID=%lu\n\t- closing connection and exiting.\n\n", pthread_self());
+    #endif
 
     // when it receives EOF closes connection
     close(client.fd);
@@ -276,16 +322,26 @@ void* remote_thread_handler(void *args){
     nr_threads++;
     pthread_mutex_unlock(&mutex_nr_threads);
     
+    #ifdef DEBUG
     printf("[log] thread: threadID=%lu\n\t- was created to handle communication with the new remote client: %s\n", pthread_self(), client.sin_addr);
+    #endif
+    
     // if some other clipboard have connected to this clipboard, then
     // this one, sends all the current clipboard data from all regions
     if(client.fd != r_out_sock_fd){
+        #ifdef DEBUG
         printf("\n");
+        #endif
+        
         for(region = 0; region < NREGIONS; region++){
             
             pthread_rwlock_rdlock(&rwlock_clip[region]);
             size = clipboard[region].size;
             pthread_rwlock_unlock(&rwlock_clip[region]);
+            
+            // if this region have no data yet, then do not send anything
+            if(!(int)size)
+                continue;
 
             m1.operation = COPY;
             m1.region = region;
@@ -297,12 +353,6 @@ void* remote_thread_handler(void *args){
             if(write(client.fd, message, sizeof m1) == -1){
                 perror(E_WRITE);
                 break;
-            }
-            
-            // if this region have no data yet, then do not send anything
-            if(!(int)size){
-                printf("\t- sent[r]: region=%d | message=\n", region);
-                continue;
             }
             
             if((message_clip = realloc(message_clip, size)) == NULL) p_error(E_REALLOC);
@@ -318,9 +368,14 @@ void* remote_thread_handler(void *args){
                 break;
             }
             
+            #ifdef DEBUG
             printf("\t- sent[r]: region=%d | message=%s\n", region, (char*)message_clip);
+            #endif
+            
         }
+        #ifdef DEBUG
         printf("\n");
+        #endif
     }
 
     // waits until a new message arrives from the local client or break loop when
@@ -332,12 +387,16 @@ void* remote_thread_handler(void *args){
         // data to receive and the respective region
         memcpy(&m1, message, sizeof m1);
         
+        #ifdef DEBUG
         printf("[log] thread: threadID=%lu \n", pthread_self());
+        #endif
         
         // from a clipboard, the operation is always a copy, so if it receives
         // size = 0, then nothing happens, as the real computer's clipboard does
         if(!(int)m1.size){
+            #ifdef DEBUG
             printf("\t- recv[r]: region=%d | message=\n", m1.region);
+            #endif
             continue;
         }
         
@@ -368,10 +427,15 @@ void* remote_thread_handler(void *args){
         pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
         memcpy(clipboard[m1.region].data, message_clip, m1.size);
         pthread_rwlock_unlock(&rwlock_clip[m1.region]);
+        
+        free(message_clip);
+        message_clip = NULL;
 
+        #ifdef DEBUG
         pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
         printf("\t- recv[r]: region=%d | message=%s\n", m1.region, (char*)clipboard[m1.region].data);
         pthread_rwlock_unlock(&rwlock_clip[m1.region]);
+        #endif
         
         // thread to handle replication of this region for all remote clipboards
         // except the one that asks the copy and for some local app that is locked
@@ -385,6 +449,7 @@ void* remote_thread_handler(void *args){
         
         // thread to handle replication
         pthread_mutex_lock(&mutex_replicate);
+        
         if(pthread_create(&thread_id, NULL, replicate_copy_cmd, (void *)&replicate) != 0){
             perror(E_T_CREATE);
             break;
@@ -400,7 +465,10 @@ void* remote_thread_handler(void *args){
         pthread_mutex_unlock(&mutex_replicate);
     }
     
+    #ifdef DEBUG
     printf("[log] thread: threadID=%lu\n\t- closing connection and exiting.\n\n", pthread_self());
+    #endif
+    
 
     // when it receives EOF closes connection
     close(client.fd);
@@ -444,7 +512,7 @@ void* accept_local_client_handler(void *args){
     pthread_mutex_lock(&mutex_nr_threads);
     nr_threads++;
     
-    //signal if all initial threads have been created
+    // signal if all initial threads have been created
     if(remote_connection && nr_threads == 3)
         pthread_cond_signal(&data_cond);
     else if(!remote_connection && nr_threads == 2)
@@ -459,7 +527,9 @@ void* accept_local_client_handler(void *args){
             continue;
         }
         
+        #ifdef DEBUG
         printf("[log] thread: threadID=%lu\n\t- acceped connection from: %s\n\n", pthread_self(), client_addr.sun_path);
+        #endif
         
         pthread_mutex_lock(&mutex_cpy_l_fd);
         
@@ -530,7 +600,9 @@ void* accept_remote_client_handler(void *args){
         // copy the client's sin_addr
         strcpy(client.sin_addr, inet_ntoa(client_addr.sin_addr));
         
+        #ifdef DEBUG
         printf("[log] thread: threadID=%lu\n\t- acceped connection from: %s\n\n", pthread_self(), client.sin_addr);
+        #endif
         
         pthread_mutex_lock(&mutex_cpy_r_fd);
         
@@ -552,6 +624,7 @@ void* accept_remote_client_handler(void *args){
     }
     
     printf("[log] thread: threadID=%lu\n\t- exiting.\n\n", pthread_self());
+    
     
     // decrement the number of active threads, and if it is zero
     // send a signal to the condition variable so the program can exit safely
@@ -589,7 +662,9 @@ void* replicate_copy_cmd(void *args){
     nr_threads++;
     pthread_mutex_unlock(&mutex_nr_threads);
 
+    #ifdef DEBUG
     printf("\n[log] thread: threadID=%lu\n\t- was created to handle replication of region %d\n", pthread_self(), replicate.message.region);
+    #endif
     
     client_t *all_client_fd_aux;    
     if ((all_client_fd_aux = (client_t*) malloc(n_user*sizeof(client_t) )) == NULL) p_error(E_MALLOC);
@@ -618,7 +693,9 @@ void* replicate_copy_cmd(void *args){
                 }
                 
                 if(!(int)size){
+                    #ifdef DEBUG
                     printf("\t- sent[r]: region=%d | message=\n", replicate.message.region);
+                    #endif
                     continue;
                 }
                 
@@ -639,8 +716,10 @@ void* replicate_copy_cmd(void *args){
                 shutdown(all_client_fd_aux[i].fd, SHUT_RDWR);
                 close(all_client_fd_aux[i].fd);
             }
-                
+            
+            #ifdef DEBUG
             printf("\t- sent[l]: region=%d | message=%s\n", replicate.message.region, (char*)replicate.data);
+            #endif
             
             all_client_fd_aux[i].wait = -1;
             all_client_fd_aux[i].wait_size = 0;
@@ -650,7 +729,9 @@ void* replicate_copy_cmd(void *args){
     free(all_client_fd_aux);
     free(replicate.data);
     
+    #ifdef DEBUG
     printf("\t- exiting.\n\n");
+    #endif
     
     // decrement the number of active threads, and if it is zero
     // send a signal to the condition variable so the program can exit safely
@@ -713,6 +794,7 @@ void verifyInputArguments(int argc, char* argv[]){
         remote_connection = 1;
         
         printf("\n");
+        
         pthread_mutex_lock(&mutex_cpy_r_fd);
         
         // create a new thread to handle the communication with the new remote client

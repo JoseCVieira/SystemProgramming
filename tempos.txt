@@ -1,0 +1,17 @@
+com prints:
+
+real    1m2.660s
+user    0m51.154s
+sys     3m58.348s
+
+sem prints no clip:
+
+real    0m49.604s
+user    0m40.918s
+sys     3m10.968s
+
+sem prints:
+
+real    0m20.710s
+user    0m22.959s
+sys     0m4.995s

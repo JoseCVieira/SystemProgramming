@@ -18,9 +18,7 @@
 #include "app_test.c"
 #include "../library/clipboard.h"
 
-
 #include "../clipboard/src/clipboard.h"
-
 
 #define NTHREADS 1
 
