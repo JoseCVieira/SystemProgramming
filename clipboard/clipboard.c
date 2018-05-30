@@ -223,6 +223,7 @@ void* local_thread_handler(void* args){
                 
                 // send the data present in the asked region to the socket
                 if(write(client.fd, message_clip, m1.size) == -1) {
+                    printf("\n4\n");
                     perror(E_WRITE); // print the error and close the client
                     break;
                 }
@@ -234,7 +235,7 @@ void* local_thread_handler(void* args){
                 #endif
             }else{
                 // nothing to send. just send a '\0' character
-                if(write(client.fd, &clean_char, m1.size) == -1) {
+                if(write(client.fd, &clean_char, 1) == -1) {
                     perror(E_WRITE); // print the error and close the client
                     break;
                 }
