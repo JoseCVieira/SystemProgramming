@@ -55,6 +55,15 @@
 #define I_IP          "[invalid] ip address\n"
 #define I_PORT        "[invalid] port\n"
 
+#define NR_MUTEXES 7
+#define M_USER     0
+#define M_THREAD   1
+#define M_CPY_L    2
+#define M_CPY_R    3
+#define M_REPL     4
+#define M_DATA_C   5
+#define M_REPLI    6
+
 typedef struct s_clipboard {
     void *data;
     size_t size;

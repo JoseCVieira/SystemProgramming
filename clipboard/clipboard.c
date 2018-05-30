@@ -3,13 +3,9 @@
 #define DEBUG
 
 // mutexes
-pthread_mutex_t mutex_nr_user    = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_nr_threads = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_cpy_l_fd   = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_cpy_r_fd   = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_replicate  = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_data_cond  = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t mutex_replicat   = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t mutex[] = {
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, 
+    PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER, PTHREAD_MUTEX_INITIALIZER};
 
 // cond. variable
 pthread_cond_t data_cond = PTHREAD_COND_INITIALIZER;
@@ -59,16 +55,16 @@ int main(int argc, char* argv[]){
     }
 
     // waits until all initial threads are created
-    pthread_mutex_lock(&mutex_data_cond);
-    pthread_cond_wait(&data_cond, &mutex_data_cond);
-    pthread_mutex_unlock(&mutex_data_cond);
+    pthread_mutex_lock(&mutex[M_DATA_C]);
+    pthread_cond_wait(&data_cond, &mutex[M_DATA_C]);
+    pthread_mutex_unlock(&mutex[M_DATA_C]);
 
     printf("\n[log] thread main: threadID:%lu\n\t- all set!\n\n", pthread_self());
 
     // waits a signal to terminate
-    pthread_mutex_lock(&mutex_data_cond);
-    pthread_cond_wait(&data_cond, &mutex_data_cond);
-    pthread_mutex_unlock(&mutex_data_cond);
+    pthread_mutex_lock(&mutex[M_DATA_C]);
+    pthread_cond_wait(&data_cond, &mutex[M_DATA_C]);
+    pthread_mutex_unlock(&mutex[M_DATA_C]);
 
     secure_exit(0);
     return 0;
@@ -79,7 +75,7 @@ int main(int argc, char* argv[]){
 // and the distributed clipboard continues
 void* local_thread_handler(void* args){
     client_t client = *((client_t *) args);
-    pthread_mutex_unlock(&mutex_cpy_l_fd);
+    pthread_mutex_unlock(&mutex[M_CPY_L]);
     
     char message[sizeof(message_t)];
     void *message_clip = NULL;
@@ -93,17 +89,17 @@ void* local_thread_handler(void* args){
     replicate.data = NULL;
 
     // update the list of clients with the new local client
-    pthread_mutex_lock(&mutex_nr_user);
+    pthread_mutex_lock(&mutex[M_USER]);
     if(!update_client_fds(client, ADD_FD)){ // if couldn't add the new client, just exits
         close(client.fd);
         pthread_exit(NULL);
     }
-    pthread_mutex_unlock(&mutex_nr_user);
+    pthread_mutex_unlock(&mutex[M_USER]);
     
     // increment number of active threads
-    pthread_mutex_lock(&mutex_nr_threads);
+    pthread_mutex_lock(&mutex[M_THREAD]);
     nr_threads++;
-    pthread_mutex_unlock(&mutex_nr_threads);
+    pthread_mutex_unlock(&mutex[M_THREAD]);
     
     #ifdef DEBUG
     printf("[log] thread: threadID=%lu\n\t- was created to handle communication with the new local client\n\n", pthread_self());
@@ -187,7 +183,7 @@ void* local_thread_handler(void* args){
             replicate.data = message_clip;
             
             // thread to handle replication
-            pthread_mutex_lock(&mutex_replicate);
+            pthread_mutex_lock(&mutex[M_REPL]);
             if(pthread_create(&thread_id, NULL, replicate_copy_cmd, (void *)&replicate) != 0){
                 perror(E_T_CREATE);
                 break;
@@ -199,8 +195,8 @@ void* local_thread_handler(void* args){
             }
             
             // ensures that it is locked until copying replicate struct
-            pthread_mutex_lock(&mutex_replicate);
-            pthread_mutex_unlock(&mutex_replicate);
+            pthread_mutex_lock(&mutex[M_REPL]);
+            pthread_mutex_unlock(&mutex[M_REPL]);
             
             replicate.data = NULL;
             free(message_clip);
@@ -251,7 +247,7 @@ void* local_thread_handler(void* args){
             #ifdef DEBUG
             printf("\t- recv[l]: region=%d | wait signal\n\n", m1.region);
             #endif
-            pthread_mutex_lock(&mutex_nr_user);
+            pthread_mutex_lock(&mutex[M_USER]);
             
             // searches in the list of all clients of this clipboard and put the client
             // as waiting mode, so in the next overwrite of the received region
@@ -263,7 +259,7 @@ void* local_thread_handler(void* args){
                     break;
                 }
             }
-            pthread_mutex_unlock(&mutex_nr_user);
+            pthread_mutex_unlock(&mutex[M_USER]);
         }
         
     }
@@ -278,15 +274,15 @@ void* local_thread_handler(void* args){
     free(replicate.data);
     
     // remove client from the list of all clients
-    pthread_mutex_lock(&mutex_nr_user);
+    pthread_mutex_lock(&mutex[M_USER]);
     update_client_fds(client, RMV_FD);
-    pthread_mutex_unlock(&mutex_nr_user);
+    pthread_mutex_unlock(&mutex[M_USER]);
     
     // decrement the number of active threads, and if it is zero
     // send a signal to the condition variable so the program can exit safely
-    pthread_mutex_lock(&mutex_nr_threads);
-    if(!(--nr_threads)) pthread_mutex_unlock(&mutex_data_cond);
-    pthread_mutex_unlock(&mutex_nr_threads);
+    pthread_mutex_lock(&mutex[M_THREAD]);
+    if(!(--nr_threads)) pthread_mutex_unlock(&mutex[M_DATA_C]);
+    pthread_mutex_unlock(&mutex[M_THREAD]);
     
     //will exit the thread that calls it.
     pthread_exit(NULL);
@@ -297,7 +293,7 @@ void* local_thread_handler(void* args){
 // and the distributed clipboard continues
 void* remote_thread_handler(void *args){
     client_t client = *((client_t *) args);
-    pthread_mutex_unlock(&mutex_cpy_r_fd);
+    pthread_mutex_unlock(&mutex[M_CPY_R]);
     
     char message[sizeof(message_t)];
     void *message_clip = NULL;
@@ -310,17 +306,17 @@ void* remote_thread_handler(void *args){
     replicate.data = NULL;
     
     // update the list of clients with the new remote client
-    pthread_mutex_lock(&mutex_nr_user);
+    pthread_mutex_lock(&mutex[M_USER]);
     if(!update_client_fds(client, ADD_FD)) { // if couldn't add the new client, just exits
         close(client.fd);
         pthread_exit(NULL);
     }
-    pthread_mutex_unlock(&mutex_nr_user);
+    pthread_mutex_unlock(&mutex[M_USER]);
     
     // increment number of active threads
-    pthread_mutex_lock(&mutex_nr_threads);
+    pthread_mutex_lock(&mutex[M_THREAD]);
     nr_threads++;
-    pthread_mutex_unlock(&mutex_nr_threads);
+    pthread_mutex_unlock(&mutex[M_THREAD]);
     
     #ifdef DEBUG
     printf("[log] thread: threadID=%lu\n\t- was created to handle communication with the new remote client: %s\n", pthread_self(), client.sin_addr);
@@ -448,7 +444,7 @@ void* remote_thread_handler(void *args){
         pthread_rwlock_unlock(&rwlock_clip[m1.region]);
         
         // thread to handle replication
-        pthread_mutex_lock(&mutex_replicate);
+        pthread_mutex_lock(&mutex[M_REPL]);
         
         if(pthread_create(&thread_id, NULL, replicate_copy_cmd, (void *)&replicate) != 0){
             perror(E_T_CREATE);
@@ -461,8 +457,8 @@ void* remote_thread_handler(void *args){
         }
         
         // ensures that it is locked until copying replicate struct
-        pthread_mutex_lock(&mutex_replicate);
-        pthread_mutex_unlock(&mutex_replicate);
+        pthread_mutex_lock(&mutex[M_REPL]);
+        pthread_mutex_unlock(&mutex[M_REPL]);
     }
     
     #ifdef DEBUG
@@ -477,15 +473,15 @@ void* remote_thread_handler(void *args){
     free(replicate.data);
     
     // remove client from the list of all clients
-    pthread_mutex_lock(&mutex_nr_user);
+    pthread_mutex_lock(&mutex[M_USER]);
     update_client_fds(client, RMV_FD);
-    pthread_mutex_unlock(&mutex_nr_user);
+    pthread_mutex_unlock(&mutex[M_USER]);
     
     // decrement the number of active threads, and if it is zero
     // send a signal to the condition variable so the program can exit safely
-    pthread_mutex_lock(&mutex_nr_threads);
-    if(!(--nr_threads)) pthread_mutex_unlock(&mutex_data_cond);
-    pthread_mutex_unlock(&mutex_nr_threads);
+    pthread_mutex_lock(&mutex[M_THREAD]);
+    if(!(--nr_threads)) pthread_mutex_unlock(&mutex[M_DATA_C]);
+    pthread_mutex_unlock(&mutex[M_THREAD]);
 
     //will exit the thread that calls it.
     pthread_exit(NULL);
@@ -509,7 +505,7 @@ void* accept_local_client_handler(void *args){
     client.wait_size = 0;
     
     // increment number of active threads
-    pthread_mutex_lock(&mutex_nr_threads);
+    pthread_mutex_lock(&mutex[M_THREAD]);
     nr_threads++;
     
     // signal if all initial threads have been created
@@ -518,7 +514,7 @@ void* accept_local_client_handler(void *args){
     else if(!remote_connection && nr_threads == 2)
         pthread_cond_signal(&data_cond);
     
-    pthread_mutex_unlock(&mutex_nr_threads);
+    pthread_mutex_unlock(&mutex[M_THREAD]);
 
     // accept new connection from a new local client
     while((client.fd = accept(l_sock_fd, (struct sockaddr *) &client_addr, &size_addr)) != -1){
@@ -531,7 +527,7 @@ void* accept_local_client_handler(void *args){
         printf("[log] thread: threadID=%lu\n\t- acceped connection from: %s\n\n", pthread_self(), client_addr.sun_path);
         #endif
         
-        pthread_mutex_lock(&mutex_cpy_l_fd);
+        pthread_mutex_lock(&mutex[M_CPY_L]);
         
         // create a new thread to handle the communication with the new local client
         if(pthread_create(&thread_id, NULL, local_thread_handler, (void *)&client) != 0){
@@ -546,8 +542,8 @@ void* accept_local_client_handler(void *args){
         }
         
         // ensures that it is locked until client has been copied
-        pthread_mutex_lock(&mutex_cpy_l_fd);
-        pthread_mutex_unlock(&mutex_cpy_l_fd);
+        pthread_mutex_lock(&mutex[M_CPY_L]);
+        pthread_mutex_unlock(&mutex[M_CPY_L]);
         
     }
     
@@ -555,9 +551,9 @@ void* accept_local_client_handler(void *args){
     
     // decrement the number of active threads, and if it is zero
     // send a signal to the condition variable so the program can exit safely
-    pthread_mutex_lock(&mutex_nr_threads);
-    if(!(--nr_threads)) pthread_mutex_unlock(&mutex_data_cond);
-    pthread_mutex_unlock(&mutex_nr_threads);
+    pthread_mutex_lock(&mutex[M_THREAD]);
+    if(!(--nr_threads)) pthread_mutex_unlock(&mutex[M_DATA_C]);
+    pthread_mutex_unlock(&mutex[M_THREAD]);
     
     pthread_exit(NULL);
 }
@@ -579,7 +575,7 @@ void* accept_remote_client_handler(void *args){
     client.wait_size = 0;
     
     // increment number of active threads
-    pthread_mutex_lock(&mutex_nr_threads);
+    pthread_mutex_lock(&mutex[M_THREAD]);
     nr_threads++;
     
     // signal if all initial threads have been created
@@ -588,7 +584,7 @@ void* accept_remote_client_handler(void *args){
     else if(!remote_connection && nr_threads == 2)
         pthread_cond_signal(&data_cond);
     
-    pthread_mutex_unlock(&mutex_nr_threads);
+    pthread_mutex_unlock(&mutex[M_THREAD]);
 
     // accept new connection from a new remote client
     while((client.fd = accept(r_in_sock_fd, (struct sockaddr *) &client_addr, &size_addr)) != -1){
@@ -604,7 +600,7 @@ void* accept_remote_client_handler(void *args){
         printf("[log] thread: threadID=%lu\n\t- acceped connection from: %s\n\n", pthread_self(), client.sin_addr);
         #endif
         
-        pthread_mutex_lock(&mutex_cpy_r_fd);
+        pthread_mutex_lock(&mutex[M_CPY_R]);
         
         // create a new thread to handle the communication with the new remote client
         if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&client) != 0){
@@ -619,8 +615,8 @@ void* accept_remote_client_handler(void *args){
         }
         
         // ensures that it is locked until client has been copied
-        pthread_mutex_lock(&mutex_cpy_r_fd);
-        pthread_mutex_unlock(&mutex_cpy_r_fd);
+        pthread_mutex_lock(&mutex[M_CPY_R]);
+        pthread_mutex_unlock(&mutex[M_CPY_R]);
     }
     
     printf("[log] thread: threadID=%lu\n\t- exiting.\n\n", pthread_self());
@@ -628,9 +624,9 @@ void* accept_remote_client_handler(void *args){
     
     // decrement the number of active threads, and if it is zero
     // send a signal to the condition variable so the program can exit safely
-    pthread_mutex_lock(&mutex_nr_threads);
-    if(!(--nr_threads)) pthread_mutex_unlock(&mutex_data_cond);
-    pthread_mutex_unlock(&mutex_nr_threads);
+    pthread_mutex_lock(&mutex[M_THREAD]);
+    if(!(--nr_threads)) pthread_mutex_unlock(&mutex[M_DATA_C]);
+    pthread_mutex_unlock(&mutex[M_THREAD]);
     
     pthread_exit(NULL);
 }
@@ -645,22 +641,22 @@ void* replicate_copy_cmd(void *args){
     if ((replicate.data = (void*) realloc(replicate.data, size)) == NULL) p_error(E_REALLOC);
     
     memcpy(replicate.data, data, size);
-    pthread_mutex_unlock(&mutex_replicate);
+    pthread_mutex_unlock(&mutex[M_REPL]);
 
     char message[sizeof(message_t)];
     int i, n_user;
     
-    pthread_mutex_lock(&mutex_nr_user);
+    pthread_mutex_lock(&mutex[M_USER]);
     n_user = nr_users;
-    pthread_mutex_unlock(&mutex_nr_user);
+    pthread_mutex_unlock(&mutex[M_USER]);
 
     // serialize struct(message_t)
     memcpy(message, &replicate.message, sizeof(message_t));
     
     // increment number of active threads
-    pthread_mutex_lock(&mutex_nr_threads);
+    pthread_mutex_lock(&mutex[M_THREAD]);
     nr_threads++;
-    pthread_mutex_unlock(&mutex_nr_threads);
+    pthread_mutex_unlock(&mutex[M_THREAD]);
 
     #ifdef DEBUG
     printf("\n[log] thread: threadID=%lu\n\t- was created to handle replication of region %d\n", pthread_self(), replicate.message.region);
@@ -670,9 +666,9 @@ void* replicate_copy_cmd(void *args){
     if ((all_client_fd_aux = (client_t*) malloc(n_user*sizeof(client_t) )) == NULL) p_error(E_MALLOC);
     
     // copy the list with all clients of this clipboard, to avoid lock mutexes when calling write to the socket because its a blocking function
-    pthread_mutex_lock(&mutex_nr_user);    
+    pthread_mutex_lock(&mutex[M_USER]);    
     memcpy(all_client_fd_aux, all_client_fd, n_user*sizeof(client_t)); 
-    pthread_mutex_unlock(&mutex_nr_user);
+    pthread_mutex_unlock(&mutex[M_USER]);
 
     // for all existing clients of this clipboard
     for(i = 0; i < n_user; i++){
@@ -683,7 +679,7 @@ void* replicate_copy_cmd(void *args){
             // that send data, then,
             if((all_client_fd_aux[i].fd != replicate.client.fd && replicate.client.type >= REMOTE_C) || replicate.client.type == LOCAL){
                 
-                pthread_mutex_lock(&mutex_replicat);
+                pthread_mutex_lock(&mutex[M_REPLI]);
                 
 
                 // send message info
@@ -705,7 +701,7 @@ void* replicate_copy_cmd(void *args){
                     close(all_client_fd_aux[i].fd);
                 }
                 
-                pthread_mutex_unlock(&mutex_replicat);
+                pthread_mutex_unlock(&mutex[M_REPLI]);
             }
             
         // if the client is a local client and it is in the waitng state and it is waiting for this region, then
@@ -735,9 +731,9 @@ void* replicate_copy_cmd(void *args){
     
     // decrement the number of active threads, and if it is zero
     // send a signal to the condition variable so the program can exit safely
-    pthread_mutex_lock(&mutex_nr_threads);
-    if(!(--nr_threads)) pthread_mutex_unlock(&mutex_data_cond);
-    pthread_mutex_unlock(&mutex_nr_threads);
+    pthread_mutex_lock(&mutex[M_THREAD]);
+    if(!(--nr_threads)) pthread_mutex_unlock(&mutex[M_DATA_C]);
+    pthread_mutex_unlock(&mutex[M_THREAD]);
 
     pthread_exit(NULL);
 }
@@ -795,7 +791,7 @@ void verifyInputArguments(int argc, char* argv[]){
         
         printf("\n");
         
-        pthread_mutex_lock(&mutex_cpy_r_fd);
+        pthread_mutex_lock(&mutex[M_CPY_R]);
         
         // create a new thread to handle the communication with the new remote client
         if(pthread_create(&thread_id, NULL, remote_thread_handler, (void *)&remote) != 0){
@@ -809,8 +805,8 @@ void verifyInputArguments(int argc, char* argv[]){
         }
         
         // ensures that it is locked until copying client
-        pthread_mutex_lock(&mutex_cpy_r_fd);
-        pthread_mutex_unlock(&mutex_cpy_r_fd);
+        pthread_mutex_lock(&mutex[M_CPY_R]);
+        pthread_mutex_unlock(&mutex[M_CPY_R]);
     }
     
 }
@@ -982,7 +978,7 @@ void secure_exit(int flag){
     int i;
     
     if(!flag)
-        pthread_mutex_lock(&mutex_data_cond);
+        pthread_mutex_lock(&mutex[M_DATA_C]);
     
     for(i = 0; i < nr_users; i++){
         shutdown(all_client_fd[i].fd, SHUT_RDWR);
@@ -1000,8 +996,8 @@ void secure_exit(int flag){
 
     if(!flag){
         // waits until every thread are closed
-        pthread_mutex_lock(&mutex_data_cond);
-        pthread_mutex_unlock(&mutex_data_cond);
+        pthread_mutex_lock(&mutex[M_DATA_C]);
+        pthread_mutex_unlock(&mutex[M_DATA_C]);
     }
     
     free(all_client_fd);
@@ -1011,13 +1007,9 @@ void secure_exit(int flag){
         free(clipboard[i].data);
     }
     
-    pthread_mutex_destroy(&mutex_nr_user);
-    pthread_mutex_destroy(&mutex_nr_threads);
-    pthread_mutex_destroy(&mutex_cpy_l_fd);
-    pthread_mutex_destroy(&mutex_cpy_r_fd);
-    pthread_mutex_destroy(&mutex_replicate);
-    pthread_mutex_destroy(&mutex_replicat);
-    pthread_mutex_destroy(&mutex_data_cond);
+    for(i = 0; i < NR_MUTEXES; i++)
+        pthread_mutex_destroy(&mutex[i]);    
+    
     pthread_cond_destroy (&data_cond);
 
     printf("\n[!] exiting from clipboard\n\n");
