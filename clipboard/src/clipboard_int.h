@@ -22,7 +22,7 @@
 
 #define NR_BACKLOG 10
 #define INITIAL_NR_FD 10
-#define MAX_NR_FD 100
+#define MAX_NR_FD 1015
 
 #define ADD_FD 1
 #define RMV_FD -1

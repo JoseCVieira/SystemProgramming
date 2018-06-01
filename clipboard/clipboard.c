@@ -102,6 +102,7 @@ void* local_thread_handler(void* args){
     int i, return_val, error;
     replicate_t replicate;
     timestamp_t timestamp;
+    timestamp_msg_t timestamp_msg;
     pthread_t thread_id;
     message_t m1, m2;
 
@@ -160,7 +161,7 @@ void* local_thread_handler(void* args){
 
             if(remote_connection){
                 m2.operation = TMSTAMP;
-                m2.size = sizeof(timestamp_t);
+                m2.size = sizeof(timestamp_msg_t);
 
                 memcpy(message, &m2, sizeof m2);
 
@@ -168,10 +169,11 @@ void* local_thread_handler(void* args){
                 if(write(top_clip_client.fd, message, sizeof m2) <= 0)
                     p_error(E_WRITE); // cannot communicate with the top remote then exits
 
-                if((s=recv(top_clip_client.fd, message_timestamp, sizeof(timestamp_t), 0)) <= 0)
+                if((s=recv(top_clip_client.fd, message_timestamp, sizeof(timestamp_msg_t), 0)) <= 0)
                     p_error(E_RECV); // cannot communicate with the top remote then exits
 
-                memcpy(&timestamp, message_timestamp, sizeof(message_timestamp));
+                memcpy(&timestamp_msg, message_timestamp, sizeof(message_timestamp));
+                timestamp = get_timestamp_ntoh(timestamp_msg);
             }else
                 timestamp = get_timestamp();
 
@@ -227,8 +229,8 @@ void* local_thread_handler(void* args){
                 break; // if some error occurred closes client
 
             pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
-            memset(clipboard[m1.region].data, 0, clipboard[m1.region].size);
             clipboard[m1.region].size = m1.size;
+            memset(clipboard[m1.region].data, 0, clipboard[m1.region].size);
             memcpy(clipboard[m1.region].data, message_clip, m1.size);
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
 
@@ -599,6 +601,7 @@ void* timestamp_thread_handler(void *args){
     char message[sizeof(message_t)];
     int return_val;
     timestamp_t ts;
+    timestamp_msg_t ts_msg;
     message_t m1;
 
     client.type = REMOTE_T;
@@ -634,11 +637,12 @@ void* timestamp_thread_handler(void *args){
 
         if(m1.operation == TMSTAMP){
             ts = get_timestamp();
+            ts_msg = get_timestamp_hton(ts);
             #ifdef DEBUG
             printf("\t-timestamp sent: %d:%d:%d:%lu\n", ts.tm_struct.tm_hour, ts.tm_struct.tm_min, ts.tm_struct.tm_sec, ts.tv.tv_usec);
             #endif
-            memcpy(message_timestamp, &ts, sizeof(timestamp_t));
-            if(write(client.fd, message_timestamp, sizeof(timestamp_t)) == -1) //could not send, just ignore it
+            memcpy(message_timestamp, &ts_msg, sizeof(timestamp_msg_t));
+            if(write(client.fd, message_timestamp, sizeof(timestamp_msg_t)) == -1) //could not send, just ignore it
                 perror(E_WRITE);
         }
     }
@@ -985,6 +989,7 @@ void init(){
     char message_timestamp[sizeof(timestamp_t)];
     char message[sizeof(message_t)];
     timestamp_t ts;
+    timestamp_msg_t ts_msg;
     message_t m1;
     int i;
 
@@ -1001,7 +1006,7 @@ void init(){
 
     if(remote_connection){
         m1.operation = TMSTAMP;
-        m1.size = sizeof(timestamp_t);
+        m1.size = sizeof(timestamp_msg_t);
 
         memcpy(message, &m1, sizeof m1);
 
@@ -1011,11 +1016,12 @@ void init(){
             secure_exit(1);
         }
 
-        if(recv(top_clip_client.fd, message_timestamp, sizeof(timestamp_t), 0) <= 0){
+        if(recv(top_clip_client.fd, message_timestamp, sizeof(timestamp_msg_t), 0) <= 0){
             perror(E_RECV);
             secure_exit(1);
         }
-        memcpy(&ts, message_timestamp, sizeof(timestamp_t));
+        memcpy(&ts_msg, message_timestamp, sizeof(timestamp_msg_t));
+        ts = get_timestamp_ntoh(ts_msg);
     }else
         ts = get_timestamp();
 
@@ -1229,7 +1235,34 @@ timestamp_t get_timestamp(){
     memcpy(&ts.tm_struct,(localtime(&time_v)), sizeof(struct tm));
     return ts;
 }
-
+timestamp_msg_t get_timestamp_hton(timestamp_t ts){
+    timestamp_msg_t msg;
+    msg.usec = ts.tv.tv_usec;
+    msg.sec  = ts.tm_struct.tm_sec;
+    msg.min = ts.tm_struct.tm_min;
+    msg.hour= ts.tm_struct.tm_hour;
+    msg.day= ts.tm_struct.tm_mday;
+    msg.month= ts.tm_struct.tm_mon;
+    msg.year= ts.tm_struct.tm_year;
+    msg.yday= ts.tm_struct.tm_yday;
+    msg.isdst= ts.tm_struct.tm_isdst;
+    msg.wday= ts.tm_struct.tm_wday;
+    return msg;
+}
+timestamp_t get_timestamp_ntoh(timestamp_msg_t msg){
+    timestamp_t ts;
+    ts.tv.tv_usec = msg.usec;
+    ts.tm_struct.tm_sec = msg.sec;
+    ts.tm_struct.tm_min = msg.min;
+    ts.tm_struct.tm_hour = msg.hour;
+    ts.tm_struct.tm_mday = msg.day;
+    ts.tm_struct.tm_mon = msg.month;
+    ts.tm_struct.tm_year = msg.year;
+    ts.tm_struct.tm_yday = msg.yday;
+    ts.tm_struct.tm_isdst = msg.isdst;
+    ts.tm_struct.tm_wday = msg.wday;
+    return ts;
+}
 int update_client_fds(client_t client, int operation){
     int i, flag = 0, random;
 
