@@ -51,21 +51,20 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
         memcpy(message, &m, sizeof(message_t));
 
         /* send message_t to socket */
-        if(write(clipboard_id, message, sizeof(message_t)) == -1){
+        if(write(clipboard_id, message, sizeof(message_t)) <= 0){
             free(message);
             return 0;
         }
-        
         free(message);   
         
-        if((result = read(clipboard_id, &flag, 1)) == -1)
+        if((result = read(clipboard_id, &flag, 1)) <= 0)
             return 0;
         
         if(!flag) 
             return 0;
         
         /* send buf to socket */
-        if((result = write(clipboard_id, buf, count)) == -1)
+        if((result = write(clipboard_id, buf, count)) <= 0)
             return 0;
         return result;
     }else
@@ -98,21 +97,21 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
         memcpy(message, &m, sizeof(message_t));
 
         /* send message_t to socket */
-        if(write(clipboard_id, message, sizeof(message_t)) == -1){
+        if(write(clipboard_id, message, sizeof(message_t)) <= 0){
             free(message);
             return 0;
         }
 
         free(message);
         
-        if((result = read(clipboard_id, &flag, 1)) == -1)
+        if((result = read(clipboard_id, &flag, 1)) <= 0)
             return 0;
         
         if(!flag) 
             return 0;
         
         /* read response from clipboard */
-        if((result = read(clipboard_id, buf, count)) == -1)
+        if((result = read(clipboard_id, buf, count)) <= 0)
             return 0;
         return result;
         
@@ -144,7 +143,7 @@ int clipboard_wait(int clipboard_id, int region, void *buf, size_t count){
         memcpy(message, &m, sizeof(message_t));
 
         /* send message_t to socket */
-        if(write(clipboard_id, message, sizeof(message_t)) == -1){
+        if(write(clipboard_id, message, sizeof(message_t)) <= 0){
             free(message);
             return 0;
         }
@@ -152,7 +151,7 @@ int clipboard_wait(int clipboard_id, int region, void *buf, size_t count){
         free(message);
         
         /* read response from clipboard */
-        if((result = read(clipboard_id, buf, count)) == -1)
+        if((result = read(clipboard_id, buf, count)) <= 0)
             return 0;
         return result;
         

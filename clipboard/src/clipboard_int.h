@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <ifaddrs.h>
 #include <errno.h>
+#include <time.h>
 
 #include "clipboard_shared.h"
 
@@ -21,6 +22,7 @@
 
 #define NR_BACKLOG 10
 #define INITIAL_NR_FD 10
+#define MAX_NR_FD 1015
 
 #define ADD_FD 1
 #define RMV_FD -1
@@ -31,6 +33,9 @@
 #define LOCAL 1
 #define REMOTE_C 2
 #define REMOTE_S 3
+#define REMOTE_T 4
+
+#define TMSTAMP 4
 
 // messages
 #define E_SOCKET   "[error] socket"
@@ -55,7 +60,7 @@
 #define I_IP          "[invalid] ip address\n"
 #define I_PORT        "[invalid] port\n"
 
-#define NR_MUTEXES 7
+#define NR_MUTEXES 8
 #define M_USER     0
 #define M_THREAD   1
 #define M_CPY_L    2
@@ -63,6 +68,7 @@
 #define M_REPL     4
 #define M_DATA_C   5
 #define M_REPLI    6
+#define M_WAIT_FD  7
 
 typedef struct s_clipboard {
     void *data;
@@ -83,11 +89,18 @@ typedef struct s_replicate {
     void *data;
 }replicate_t;
 
+typedef struct s_timestamp {
+    struct timeval tv;
+    struct tm tm_struct;
+}timestamp_t;
+
 // functions prototypes
+client_t connect_server(char *ipAddress, int port, int sock_fd);
 int update_client_fds(client_t client, int operation);
 void verifyInputArguments(int argc, char *argv[]);
-client_t connect_server(char *ipAddress, int port);
 int isValidIpAddress(char *ipAddress);
+void open_timestamp_socket();
+timestamp_t get_timestamp();
 void secure_exit(int flag);
 void open_remote_socket();
 void open_local_socket();
@@ -96,8 +109,10 @@ void inv(char* msg);
 void init();
 
 // thread handlers prototypes
+void* accept_timestamp_client_handler(void *args);
 void* accept_remote_client_handler(void *args);
 void* accept_local_client_handler(void *args);
+void* timestamp_thread_handler(void *args);
 void* remote_thread_handler(void *args);
 void* local_thread_handler(void *args);
 void* replicate_copy_cmd(void *args);
