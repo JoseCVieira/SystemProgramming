@@ -22,7 +22,7 @@
 
 #define NR_BACKLOG 10
 #define INITIAL_NR_FD 10
-#define MAX_NR_FD 1015
+#define MAX_NR_FD 100
 
 #define ADD_FD 1
 #define RMV_FD -1
@@ -84,6 +84,21 @@ typedef struct s_replicate {
     void *data;
 }replicate_t;
 
+typedef struct s_timestamp_msg {
+    /*struct timeval tv;
+    struct tm tm_struct;*/
+    uint32_t usec;
+    uint8_t sec;
+    uint8_t min;
+    uint8_t hour;
+    uint8_t day;
+    uint8_t month;
+    uint32_t year;
+    uint16_t yday;
+    uint32_t isdst;
+    uint8_t wday;
+}timestamp_msg_t;
+
 typedef struct s_timestamp {
     struct timeval tv;
     struct tm tm_struct;
@@ -109,7 +124,9 @@ void open_local_socket();
 void p_error(char* msg);
 void inv(char* msg);
 void init();
-
+void print_timestamp(timestamp_t ts ,char * msg);
+timestamp_t get_timestamp_ntoh(timestamp_msg_t msg);
+timestamp_msg_t get_timestamp_hton(timestamp_t ts);
 // thread handlers prototypes
 void* accept_timestamp_client_handler(void *args);
 void* accept_remote_client_handler(void *args);
