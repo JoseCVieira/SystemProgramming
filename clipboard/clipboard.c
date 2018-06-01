@@ -370,7 +370,7 @@ void* remote_thread_handler(void *args){
     replicate.data = NULL;
     
     // sends top clipboard address
-    if(!remote_connection){
+    if(client.type != REMOTE_S){
         memcpy(send_top, top_clip_address, sizeof(struct sockaddr_in));
         if(write(client.fd, send_top, sizeof send_top) == -1){
             perror(E_WRITE);
@@ -409,7 +409,7 @@ void* remote_thread_handler(void *args){
     
     // if some other clipboard have connected to this clipboard, then
     // this one, sends all the current clipboard data from all regions
-    if(client.fd != r_out_sock_fd){
+    if(client.fd != r_out_sock_fd){ // testar isto -----------------------------------------------------------------------------------------------------------------------
         for(region = 0; region < NREGIONS; region++){
             pthread_rwlock_rdlock(&rwlock_clip[region]);
             size = clipboard[region].size;
@@ -986,9 +986,10 @@ void init(){
 
 // verify the input arguments
 void verifyInputArguments(int argc, char* argv[]){
+    struct ifaddrs *addrs;
     pthread_t thread_id;
     client_t remote;
-    int port;
+    int port, tmp_port;
     
     if(argc != 1 && argc != 4)
         inv(I_INPUT_USAGE);
@@ -1032,8 +1033,27 @@ void verifyInputArguments(int argc, char* argv[]){
         pthread_mutex_unlock(&mutex[M_CPY_R]);
         
         printf("\n");
-    }else
+    }else{
+        //gets all interface addresses
+        getifaddrs(&addrs);
+        //goes through the list
+        while(addrs != NULL){
+            //finds addresses of type AF_INET
+            if(addrs->ifa_addr->sa_family == AF_INET){
+                //filters the interfaces to get wireless address
+                if(strcmp(addrs->ifa_name, "wlan0") == 0){
+                    tmp_port = ntohs(top_clip_address->sin_port);
+                    memcpy(top_clip_address, addrs->ifa_addr, sizeof(struct sockaddr_in));
+                    top_clip_address->sin_port = htons(tmp_port);
+                }
+            }
+            //goes to next value
+            addrs = addrs->ifa_next;
+        }
+        has_top = 2;
         open_timestamp_socket();
+        freeifaddrs(addrs);
+    }
     
 }
 
