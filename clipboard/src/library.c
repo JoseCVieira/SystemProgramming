@@ -30,7 +30,7 @@ int clipboard_copy(int clipboard_id, int region, void *buf, size_t count){
     int result;
     char flag;
     
-    if(count < 0)
+    if(count < 0 || count > MAX_SIZE)
         return 0;
     else if (!count) // dont let copy "nothing" to clipboard like computer's clipboard
         return 1;
@@ -76,7 +76,7 @@ int clipboard_paste(int clipboard_id, int region, void *buf, size_t count){
     int result;
     char flag;
     
-    if(count < 0)
+    if(count < 0 || count > MAX_SIZE)
         return 0;
     else if (!count) // dont let paste "nothing" like computer's clipboard
         return 1;
@@ -124,7 +124,7 @@ int clipboard_wait(int clipboard_id, int region, void *buf, size_t count){
     int result;
     
     // dont let wait for "nothing"
-    if(count <= 0)
+    if(count <= 0 || count > MAX_SIZE)
         return 0;
     
     /* pass values to struct */

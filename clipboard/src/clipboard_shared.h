@@ -11,6 +11,8 @@
 #define PASTE 2
 #define WAIT 3
 
+#define MAX_SIZE 1073741824 //1GB
+
 typedef struct s_message {
     uint8_t operation;
     uint8_t region;

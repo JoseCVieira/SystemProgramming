@@ -70,11 +70,6 @@
 #define M_REPLI    6
 #define M_WAIT_FD  7
 
-typedef struct s_clipboard {
-    void *data;
-    size_t size;
-}clipboard_t;
-
 typedef struct s_client {
     int fd;
     int type;
@@ -94,8 +89,15 @@ typedef struct s_timestamp {
     struct tm tm_struct;
 }timestamp_t;
 
+typedef struct s_clipboard {
+    void *data;
+    size_t size;
+    timestamp_t ts;
+}clipboard_t;
+
 // functions prototypes
 client_t connect_server(char *ipAddress, int port, int sock_fd);
+int compare_timestamp(timestamp_t ts1, timestamp_t ts2);
 int update_client_fds(client_t client, int operation);
 void verifyInputArguments(int argc, char *argv[]);
 int isValidIpAddress(char *ipAddress);
