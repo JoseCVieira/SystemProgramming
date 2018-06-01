@@ -102,7 +102,6 @@ void* local_thread_handler(void* args){
     int i, return_val, error;
     replicate_t replicate;
     timestamp_t timestamp;
-    timestamp_msg_t timestamp_msg;
     pthread_t thread_id;
     message_t m1, m2;
 
@@ -156,11 +155,12 @@ void* local_thread_handler(void* args){
             continue; //will back to recv state
         }
 
+        int s;
         if(m1.operation == COPY) {
 
             if(remote_connection){
                 m2.operation = TMSTAMP;
-                m2.size = sizeof(timestamp_msg_t);
+                m2.size = sizeof(timestamp_t);
 
                 memcpy(message, &m2, sizeof m2);
 
@@ -168,23 +168,24 @@ void* local_thread_handler(void* args){
                 if(write(top_clip_client.fd, message, sizeof m2) <= 0)
                     p_error(E_WRITE); // cannot communicate with the top remote then exits
 
-                if(recv(top_clip_client.fd, message_timestamp, sizeof(timestamp_msg_t), 0) <= 0)
+                if((s=recv(top_clip_client.fd, message_timestamp, sizeof(timestamp_t), 0)) <= 0)
                     p_error(E_RECV); // cannot communicate with the top remote then exits
 
-                memcpy(&timestamp_msg, message_timestamp, sizeof(message_timestamp));
-                timestamp = get_timestamp_ntoh(timestamp_msg);
+                memcpy(&timestamp, message_timestamp, sizeof(message_timestamp));
             }else
                 timestamp = get_timestamp();
 
             // clear clipboard region and reallocate memory of the region
             pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
-
             clipboard[m1.region].data = realloc(clipboard[m1.region].data, m1.size);
 
             if (clipboard[m1.region].data == NULL)
                 flag = 0;
-                print_timestamp(clipboard[m1.region].ts, "\t-timestamp old");
-                print_timestamp(timestamp, "\t-timestamp new");
+
+            printf("size of = %d\n", s);
+            printf("\t-old ts => %d:%d:%d:%lu\n", clipboard[m1.region].ts.tm_struct.tm_hour, clipboard[m1.region].ts.tm_struct.tm_min, clipboard[m1.region].ts.tm_struct.tm_sec, clipboard[m1.region].ts.tv.tv_usec);
+            printf("\t-new ts => %d:%d:%d:%lu\n", timestamp.tm_struct.tm_hour, timestamp.tm_struct.tm_min, timestamp.tm_struct.tm_sec, timestamp.tv.tv_usec);
+
             if(!compare_timestamp(clipboard[m1.region].ts, timestamp))
                 flag = -1;
             else
@@ -192,10 +193,13 @@ void* local_thread_handler(void* args){
 
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
 
+            printf("3 flag = %d\n", flag);
+
             if (flag <= 0){ // if could not allocate memory or, the timestamp is lower than the present one, then
                 if(!flag)
                     perror(E_REALLOC);
                 flag = 0;
+
                 if(write(client.fd, &flag, 1) <= 0) { // inform the client that it is not possible to copy
                     perror(E_WRITE);
                     break; // if some error occurred closes client
@@ -223,15 +227,14 @@ void* local_thread_handler(void* args){
                 break; // if some error occurred closes client
 
             pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
-            clipboard[m1.region].size = m1.size;
             memset(clipboard[m1.region].data, 0, clipboard[m1.region].size);
+            clipboard[m1.region].size = m1.size;
             memcpy(clipboard[m1.region].data, message_clip, m1.size);
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
 
             #ifdef DEBUG
             pthread_rwlock_rdlock(&rwlock_clip[m1.region]);
-            //printf("\t-timestamp received => %d:%d:%d:%lu\n", timestamp.tm_struct.tm_hour, timestamp.tm_struct.tm_min, timestamp.tm_struct.tm_sec, timestamp.tv.tv_usec);
-            print_timestamp(timestamp, "\t-timestamp defined");
+            printf("\t-timestamp received => %d:%d:%d:%lu\n", timestamp.tm_struct.tm_hour, timestamp.tm_struct.tm_min, timestamp.tm_struct.tm_sec, timestamp.tv.tv_usec);
             printf("\t- recv[l]: region=%d | message=%s\n", m1.region, (char*)clipboard[m1.region].data);
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
             #endif
@@ -412,7 +415,7 @@ void* remote_thread_handler(void *args){
 
     // if some other clipboard have connected to this clipboard, then
     // this one, sends all the current clipboard data from all regions
-    if(client.fd != r_out_sock_fd){ // testar isto -----------------------------------------------------------------------------------------------------------------------
+    if(client.fd != r_out_sock_fd){
         for(region = 0; region < NREGIONS; region++){
             pthread_rwlock_rdlock(&rwlock_clip[region]);
             size = clipboard[region].size;
@@ -457,10 +460,13 @@ void* remote_thread_handler(void *args){
             printf("\t- sent[r]: region=%d | message=%s\n", region, (char*)message_clip);
             #endif
         }
-      /*  if(error){
-
-      }*/
-
+        if(error){
+            perror(E_WRITE);
+            shutdown(client.fd, SHUT_RDWR);
+            close(client.fd);
+            pthread_exit(NULL);
+            free(message_clip);
+        }
     }
 
     // waits until a new message arrives from the local client or break loop when
@@ -483,16 +489,14 @@ void* remote_thread_handler(void *args){
 
         // clear clipboard region and reallocate memory of the region
         pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
-        memset(clipboard[m1.region].data, 0, clipboard[m1.region].size);
         clipboard[m1.region].data = realloc(clipboard[m1.region].data, m1.size);
-        clipboard[m1.region].size = m1.size;
 
         error = 0;
-        if (clipboard[m1.region].data == NULL)
+        if(clipboard[m1.region].data == NULL)
             error = 1;
         pthread_rwlock_unlock(&rwlock_clip[m1.region]);
 
-        if (error){
+        if(error){
             perror(E_REALLOC);
             continue;
         }
@@ -512,6 +516,8 @@ void* remote_thread_handler(void *args){
             break;
 
         pthread_rwlock_wrlock(&rwlock_clip[m1.region]);
+        memset(clipboard[m1.region].data, 0, clipboard[m1.region].size);
+        clipboard[m1.region].size = m1.size;
         memcpy(clipboard[m1.region].data, message_clip, m1.size);
         pthread_rwlock_unlock(&rwlock_clip[m1.region]);
 
@@ -593,7 +599,6 @@ void* timestamp_thread_handler(void *args){
     char message[sizeof(message_t)];
     int return_val;
     timestamp_t ts;
-    timestamp_msg_t ts_msg;
     message_t m1;
 
     client.type = REMOTE_T;
@@ -629,12 +634,11 @@ void* timestamp_thread_handler(void *args){
 
         if(m1.operation == TMSTAMP){
             ts = get_timestamp();
-            ts_msg = get_timestamp_hton(ts);
             #ifdef DEBUG
             printf("\t-timestamp sent: %d:%d:%d:%lu\n", ts.tm_struct.tm_hour, ts.tm_struct.tm_min, ts.tm_struct.tm_sec, ts.tv.tv_usec);
             #endif
-            memcpy(message_timestamp, &ts_msg, sizeof(timestamp_msg_t));
-            if(write(client.fd, message_timestamp, sizeof(timestamp_msg_t)) == -1)
+            memcpy(message_timestamp, &ts, sizeof(timestamp_t));
+            if(write(client.fd, message_timestamp, sizeof(timestamp_t)) == -1) //could not send, just ignore it
                 perror(E_WRITE);
         }
     }
@@ -871,11 +875,19 @@ void* replicate_copy_cmd(void *args){
     void* data = replicate.data;
     replicate.data = NULL;
 
-    if ((replicate.data = (void*) realloc(replicate.data, size)) == NULL)
+    int error = 0;
+    if ((replicate.data = (void*) realloc(replicate.data, size)) == NULL){
         perror(E_REALLOC);
+        error = 1;
+    }
 
-    memcpy(replicate.data, data, size);
+    if(!error)
+        memcpy(replicate.data, data, size);
+
     pthread_mutex_unlock(&mutex[M_REPL]);
+
+    if(error)
+        pthread_exit(NULL);
 
     char message[sizeof(message_t)];
     int i, n_user;
@@ -897,57 +909,59 @@ void* replicate_copy_cmd(void *args){
     #endif
 
     client_t *all_client_fd_aux;
-    if ((all_client_fd_aux = (client_t*) malloc(n_user*sizeof(client_t) )) == NULL) p_error(E_MALLOC); //-----------------------------------------------------------------------------------------------------------------
+    if ((all_client_fd_aux = (client_t*) malloc(n_user*sizeof(client_t) )) == NULL)
+        perror(E_MALLOC);
+    else{
+        // copy the list with all clients of this clipboard, to avoid lock mutexes when calling write to the socket because its a blocking function
+        pthread_mutex_lock(&mutex[M_USER]);
+        memcpy(all_client_fd_aux, all_client_fd, n_user*sizeof(client_t));
+        pthread_mutex_unlock(&mutex[M_USER]);
 
-    // copy the list with all clients of this clipboard, to avoid lock mutexes when calling write to the socket because its a blocking function
-    pthread_mutex_lock(&mutex[M_USER]);
-    memcpy(all_client_fd_aux, all_client_fd, n_user*sizeof(client_t));
-    pthread_mutex_unlock(&mutex[M_USER]);
+        // for all existing clients of this clipboard
+        for(i = 0; i < n_user; i++){
+            // if it is a clipboard client or a clipboard server
+            if(all_client_fd_aux[i].type >= REMOTE_C && all_client_fd_aux[i].type < REMOTE_T){
 
-    // for all existing clients of this clipboard
-    for(i = 0; i < n_user; i++){
-        // if it is a clipboard client or a clipboard server
-        if(all_client_fd_aux[i].type >= REMOTE_C && all_client_fd_aux[i].type < REMOTE_T){
+                // if file descriptor is different from the received (the clipboard that have sent data to this one) or if it was a local client
+                // that send data, then,
+                if((all_client_fd_aux[i].fd != replicate.client.fd && replicate.client.type >= REMOTE_C) || replicate.client.type == LOCAL){
 
-            // if file descriptor is different from the received (the clipboard that have sent data to this one) or if it was a local client
-            // that send data, then,
-            if((all_client_fd_aux[i].fd != replicate.client.fd && replicate.client.type >= REMOTE_C) || replicate.client.type == LOCAL){
+                    pthread_mutex_lock(&mutex[M_REPLI]);
 
-                pthread_mutex_lock(&mutex[M_REPLI]);
+                    // send message info
+                    if(write(all_client_fd_aux[i].fd, message, sizeof(message_t)) <= 0) {
+                        perror(E_WRITE);
+                        shutdown(all_client_fd_aux[i].fd, SHUT_RDWR); // if an error occur, then close the client fd and the resposible thread will receive and EOF that will
+                        close(all_client_fd_aux[i].fd);               // be resposible to do the safe remove of this client
+                    }
 
-                // send message info
-                if(write(all_client_fd_aux[i].fd, message, sizeof(message_t)) <= 0) {
-                    perror(E_WRITE);
-                    shutdown(all_client_fd_aux[i].fd, SHUT_RDWR); // if an error occur, then close the client fd and the resposible thread will receive and EOF that will
-                    close(all_client_fd_aux[i].fd);               // be resposible to do the safe remove of this client
+                    // send the actual data
+                    if(write(all_client_fd_aux[i].fd, replicate.data, replicate.message.size) <= 0) {
+                        perror(E_WRITE);
+                        shutdown(all_client_fd_aux[i].fd, SHUT_RDWR);
+                        close(all_client_fd_aux[i].fd);
+                    }
+
+                    pthread_mutex_unlock(&mutex[M_REPLI]);
                 }
 
-                // send the actual data
-                if(write(all_client_fd_aux[i].fd, replicate.data, replicate.message.size) <= 0) {
+            // if the client is a local client and it is in the waitng state and it is waiting for this region, then
+            }else if(all_client_fd_aux[i].type == LOCAL && all_client_fd_aux[i].wait == replicate.message.region){
+
+                // replicate the data to him with re asked size
+                if(write(all_client_fd_aux[i].fd, replicate.data, all_client_fd_aux[i].wait_size) <= 0){
                     perror(E_WRITE);
                     shutdown(all_client_fd_aux[i].fd, SHUT_RDWR);
                     close(all_client_fd_aux[i].fd);
                 }
 
-                pthread_mutex_unlock(&mutex[M_REPLI]);
+                #ifdef DEBUG
+                printf("\t- sent[l]: region=%d | message=%s\n", replicate.message.region, (char*)replicate.data);
+                #endif
+
+                all_client_fd_aux[i].wait = -1;
+                all_client_fd_aux[i].wait_size = 0;
             }
-
-        // if the client is a local client and it is in the waitng state and it is waiting for this region, then
-        }else if(all_client_fd_aux[i].type == LOCAL && all_client_fd_aux[i].wait == replicate.message.region){
-
-            // replicate the data to him with re asked size
-            if(write(all_client_fd_aux[i].fd, replicate.data, all_client_fd_aux[i].wait_size) <= 0){
-                perror(E_WRITE);
-                shutdown(all_client_fd_aux[i].fd, SHUT_RDWR);
-                close(all_client_fd_aux[i].fd);
-            }
-
-            #ifdef DEBUG
-            printf("\t- sent[l]: region=%d | message=%s\n", replicate.message.region, (char*)replicate.data);
-            #endif
-
-            all_client_fd_aux[i].wait = -1;
-            all_client_fd_aux[i].wait_size = 0;
         }
     }
 
@@ -1215,34 +1229,7 @@ timestamp_t get_timestamp(){
     memcpy(&ts.tm_struct,(localtime(&time_v)), sizeof(struct tm));
     return ts;
 }
-timestamp_msg_t get_timestamp_hton(timestamp_t ts){
-    timestamp_msg_t msg;
-    msg.usec = ts.tv.tv_usec;
-    msg.sec  = ts.tm_struct.tm_sec;
-    msg.min = ts.tm_struct.tm_min;
-    msg.hour= ts.tm_struct.tm_hour;
-    msg.day= ts.tm_struct.tm_mday;
-    msg.month= ts.tm_struct.tm_mon;
-    msg.year= ts.tm_struct.tm_year;
-    msg.yday= ts.tm_struct.tm_yday;
-    msg.isdst= ts.tm_struct.tm_isdst;
-    msg.wday= ts.tm_struct.tm_wday;
-    return msg;
-}
-timestamp_t get_timestamp_ntoh(timestamp_msg_t msg){
-    timestamp_t ts;
-    ts.tv.tv_usec = msg.usec;
-    ts.tm_struct.tm_sec = msg.sec;
-    ts.tm_struct.tm_min = msg.min;
-    ts.tm_struct.tm_hour = msg.hour;
-    ts.tm_struct.tm_mday = msg.day;
-    ts.tm_struct.tm_mon = msg.month;
-    ts.tm_struct.tm_year = msg.year;
-    ts.tm_struct.tm_yday = msg.yday;
-    ts.tm_struct.tm_isdst = msg.isdst;
-    ts.tm_struct.tm_wday = msg.wday;
-    return ts;
-}
+
 int update_client_fds(client_t client, int operation){
     int i, flag = 0, random;
 
@@ -1302,7 +1289,6 @@ int update_client_fds(client_t client, int operation){
 }
 
 int compare_timestamp(timestamp_t ts1, timestamp_t ts2){
-
     int t1 = mktime(&ts1.tm_struct);
     int t2 = mktime(&ts2.tm_struct);
 
@@ -1404,11 +1390,4 @@ void secure_exit(int flag){
 
     if(flag)
         exit(-1);
-}
-
-void print_timestamp(timestamp_t ts ,char * msg){
-  timestamp_t ts_now;
-  ts_now = get_timestamp();
-  printf("<%d:%d:%d:%lu> %s => %d:%d:%d:%lu\n",ts_now.tm_struct.tm_hour, ts_now.tm_struct.tm_min, ts_now.tm_struct.tm_sec, ts_now.tv.tv_usec, msg,ts.tm_struct.tm_hour, ts.tm_struct.tm_min, ts.tm_struct.tm_sec, ts.tv.tv_usec);
-
 }
