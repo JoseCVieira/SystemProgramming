@@ -85,8 +85,6 @@ typedef struct s_replicate {
 }replicate_t;
 
 typedef struct s_timestamp_msg {
-    /*struct timeval tv;
-    struct tm tm_struct;*/
     uint32_t usec;
     uint8_t sec;
     uint8_t min;
@@ -114,7 +112,10 @@ typedef struct s_clipboard {
 client_t connect_server(char *ipAddress, int port, int sock_fd);
 int compare_timestamp(timestamp_t ts1, timestamp_t ts2);
 int update_client_fds(client_t client, int operation);
+timestamp_t get_timestamp_ntoh(timestamp_msg_t msg);
+timestamp_msg_t get_timestamp_hton(timestamp_t ts);
 void verifyInputArguments(int argc, char *argv[]);
+void print_timestamp(timestamp_t ts ,char * msg);
 int isValidIpAddress(char *ipAddress);
 void open_timestamp_socket();
 timestamp_t get_timestamp();
@@ -122,11 +123,10 @@ void secure_exit(int flag);
 void open_remote_socket();
 void open_local_socket();
 void p_error(char* msg);
+void init_time_clip();
 void inv(char* msg);
 void init();
-void print_timestamp(timestamp_t ts ,char * msg);
-timestamp_t get_timestamp_ntoh(timestamp_msg_t msg);
-timestamp_msg_t get_timestamp_hton(timestamp_t ts);
+
 // thread handlers prototypes
 void* accept_timestamp_client_handler(void *args);
 void* accept_remote_client_handler(void *args);

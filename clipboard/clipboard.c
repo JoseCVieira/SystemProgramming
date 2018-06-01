@@ -29,13 +29,14 @@ char has_top = 0;
 
 int main(int argc, char* argv[]){
     pthread_t thread_id;
-
+    
     init();
     signal(SIGINT, ctrl_c_callback_handler);        // SIGINT CTRL-C
     signal(SIGPIPE, broken_pipe_callback_handler);  // SIGPIPE broken pipe
     open_local_socket();                            // open, bind and listen local socket
     open_remote_socket();                           // open, bind and listen remote socket
     verifyInputArguments(argc, argv);               // verify input arguments and create socket to remote backup if needded
+    init_time_clip();
 
     // thread to handle accept local clients
     if(pthread_create(&thread_id, NULL, accept_local_client_handler, NULL) != 0){
@@ -156,7 +157,6 @@ void* local_thread_handler(void* args){
             continue; //will back to recv state
         }
 
-        int s;
         if(m1.operation == COPY) {
 
             if(remote_connection){
@@ -169,7 +169,7 @@ void* local_thread_handler(void* args){
                 if(write(top_clip_client.fd, message, sizeof m2) <= 0)
                     p_error(E_WRITE); // cannot communicate with the top remote then exits
 
-                if((s=recv(top_clip_client.fd, message_timestamp, sizeof(timestamp_msg_t), 0)) <= 0)
+                if(recv(top_clip_client.fd, message_timestamp, sizeof(timestamp_msg_t), 0) <= 0)
                     p_error(E_RECV); // cannot communicate with the top remote then exits
 
                 memcpy(&timestamp_msg, message_timestamp, sizeof(message_timestamp));
@@ -184,7 +184,6 @@ void* local_thread_handler(void* args){
             if (clipboard[m1.region].data == NULL)
                 flag = 0;
 
-            printf("size of = %d\n", s);
             printf("\t-old ts => %d:%d:%d:%lu\n", clipboard[m1.region].ts.tm_struct.tm_hour, clipboard[m1.region].ts.tm_struct.tm_min, clipboard[m1.region].ts.tm_struct.tm_sec, clipboard[m1.region].ts.tv.tv_usec);
             printf("\t-new ts => %d:%d:%d:%lu\n", timestamp.tm_struct.tm_hour, timestamp.tm_struct.tm_min, timestamp.tm_struct.tm_sec, timestamp.tv.tv_usec);
 
@@ -194,8 +193,6 @@ void* local_thread_handler(void* args){
                 clipboard[m1.region].ts = timestamp;
 
             pthread_rwlock_unlock(&rwlock_clip[m1.region]);
-
-            printf("3 flag = %d\n", flag);
 
             if (flag <= 0){ // if could not allocate memory or, the timestamp is lower than the present one, then
                 if(!flag)
@@ -986,11 +983,6 @@ void* replicate_copy_cmd(void *args){
 }
 
 void init(){
-    char message_timestamp[sizeof(timestamp_t)];
-    char message[sizeof(message_t)];
-    timestamp_t ts;
-    timestamp_msg_t ts_msg;
-    message_t m1;
     int i;
 
     // create an initial vector of all clients of this clipboard
@@ -1004,6 +996,30 @@ void init(){
         secure_exit(1);
     }
 
+    // init each region of the clipboard and initialize rwlock
+    for(i = 0; i < NREGIONS; i++){
+        clipboard[i].data = NULL;
+        clipboard[i].size = 0;
+        //clipboard[i].ts = ts;
+
+        if(pthread_rwlock_init(&rwlock_clip[i], NULL)){
+            perror(E_RWLOCK);
+        }
+    }
+
+    unlink(SOCK_ADDRESS);
+
+    printf("\n***CLIPBOARD***\n\n[log] thread main: threadID:%lu\n", pthread_self());
+}
+
+void init_time_clip(){
+    char message_timestamp[sizeof(timestamp_t)];
+    char message[sizeof(message_t)];
+    timestamp_t ts;
+    timestamp_msg_t ts_msg;
+    message_t m1;
+    int i;
+    
     if(remote_connection){
         m1.operation = TMSTAMP;
         m1.size = sizeof(timestamp_msg_t);
@@ -1024,21 +1040,9 @@ void init(){
         ts = get_timestamp_ntoh(ts_msg);
     }else
         ts = get_timestamp();
-
-    // init each region of the clipboard and initialize rwlock
-    for(i = 0; i < NREGIONS; i++){
-        clipboard[i].data = NULL;
-        clipboard[i].size = 0;
+    
+    for(i = 0; i < NREGIONS; i++)
         clipboard[i].ts = ts;
-
-        if(pthread_rwlock_init(&rwlock_clip[i], NULL)){
-            perror(E_RWLOCK);
-        }
-    }
-
-    unlink(SOCK_ADDRESS);
-
-    printf("\n***CLIPBOARD***\n\n[log] thread main: threadID:%lu\n", pthread_self());
 }
 
 // verify the input arguments
@@ -1235,6 +1239,7 @@ timestamp_t get_timestamp(){
     memcpy(&ts.tm_struct,(localtime(&time_v)), sizeof(struct tm));
     return ts;
 }
+
 timestamp_msg_t get_timestamp_hton(timestamp_t ts){
     timestamp_msg_t msg;
     msg.usec = ts.tv.tv_usec;
@@ -1249,6 +1254,7 @@ timestamp_msg_t get_timestamp_hton(timestamp_t ts){
     msg.wday= ts.tm_struct.tm_wday;
     return msg;
 }
+
 timestamp_t get_timestamp_ntoh(timestamp_msg_t msg){
     timestamp_t ts;
     ts.tv.tv_usec = msg.usec;
@@ -1263,6 +1269,7 @@ timestamp_t get_timestamp_ntoh(timestamp_msg_t msg){
     ts.tm_struct.tm_wday = msg.wday;
     return ts;
 }
+
 int update_client_fds(client_t client, int operation){
     int i, flag = 0, random;
 
@@ -1283,7 +1290,7 @@ int update_client_fds(client_t client, int operation){
             srand(getpid());
             do{
                 random = rand()%nr_users;
-            }while(all_client_fd[random].type != LOCAL); //testar isto -------------------------------------------------------------------------------------------------------------------------------
+            }while(all_client_fd[random].type != LOCAL);
 
             #ifdef DEBUG
             printf("random=%d => closing fd = %d\n\n", random, all_client_fd[random].fd);
