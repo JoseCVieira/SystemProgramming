@@ -47,21 +47,21 @@ In order to implement applications the system provide an API composed of the fol
 This function is called by the application before interacting with the distributed clipboard.
 
 	- Arguments:
-		- clipboard_dir – this argument corresponds to the directory where the local clipboard was launched.
+		- clipboard_dir – this argument corresponds to the directory where the local clipboard was launched
 	- Return: 
-		-  -1 if the local clipboard can not be accessed and a positive value in case of success.
+		-  -1 if the local clipboard can not be accessed and a positive value in case of success
 		
 #### int clipboard_copy(int clipboard_id, int region, void *buf, size_t count)
 This function copies the data pointed by buf to a region on the local clipboard.
 
 	- Arguments:
 		- clipboard_id – this argument corresponds to the value returned by clipboard_connect
-		- region – This argument corresponds to the region the user wants to copy the data to.
+		- region – This argument corresponds to the region the user wants to copy the data to
 		- buf – pointer to the data that is to be copied to the local clipboard
-		- count – the length of the data pointed by buf.
+		- count – the length of the data pointed by buf
 	- Return: 
 		-  This function returns positive integer corresponding to the number of bytes copied or 0 in
-		case of error (invalid clipboard_id, invalid region or local clipboard unavailable).
+		case of error (invalid clipboard_id, invalid region or local clipboard unavailable)
 		
 #### int clipboard_paste(int clipboard_id, int region, void *buf, size_t count)
 This function copies from the system to the application the data in a certain region. The
@@ -69,12 +69,13 @@ copied data is stored in the memory pointed by buf up to a length of count.
 
 	- Arguments:
 		- clipboard_id – this argument corresponds to the value returned by clipboard_connect
-		- region – This argument corresponds to the identification of the region the user wants to wait for.
+		- region –  This argument corresponds to the identification of the region the user wants to 
+		paste data from
 		- buf – pointer to the data where the data is to be copied to
-		- count – the length of memory region pointed by buf.
+		- count – the length of memory region pointed by buf
 	- Return: 
 		-  This function returns a positive integer corresponding to the number of bytes copied or 0 in
-		case of error (invalid clipboard_id, invalid region or local clipboard unavailable).
+		case of error (invalid clipboard_id, invalid region or local clipboard unavailable)
 
 #### int clipboard_wait(int clipboard_id, int region, void *buf, size_t count)
 This function waits for a change on a certain region ( new copy), and when it happens the
@@ -88,7 +89,7 @@ the memory pointed by buf up to a length of count.
 		- count – the length of memory region pointed by buf
 	- Return: 
 		-  This function returns a positive integer corresponding to the number of bytes copied or 0 in
-		case of error (invalid clipboard_id, invalid region or local clipboard unavailable).
+		case of error (invalid clipboard_id, invalid region or local clipboard unavailable)
 
 #### void clipboard_close(int clipboard_id)
 This function closes the connection between the application and the local clipboard.
