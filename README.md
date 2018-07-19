@@ -96,6 +96,44 @@ This function closes the connection between the application and the local clipbo
 	- Arguments:
 		- clipboard_id – this argument corresponds to the value returned by clipboard_connect
 
+### Local Clipboard:
+The distributed clipboard system is composed of several local clipboard processes that
+execute in different computers and that exchange information between them to maintain
+the various clipboard regions synchronized.
+
+#### Startup
+At startup it is possible for the user to define if that clipboard is to run in single mode or in
+connected mode.
+If started in connected mode, the clipboard will begin by contacting a preexisting clipboard
+to register himself and send/receive updates.
+In order to launch the clipboard in connected mode it is necessary for the user to use the
+command line argument -c followed by the address and port of another clipboard.
+Example:
+• clipboard -c 146.193.41.12 1337 – 146.193.41.12 corresponds to the
+address of the host where the remote clipboard is running and 1337 corresponds to
+the port.
+
+#### Local connection
+Local connection to a clipboard (done by applications) should be performed using UNIX
+domain sockets. The name of the socket is CLIPBOARD_SOCKET and will be located in
+the directory where the clipboard was executed. 
+
+#### Remote connections
+Every clipboard (independently of acting in single or connected mode) should be able to
+receive connections from other clipboards. This connections and communication is
+performed using INTERNET domain sockets. The port of this socket should be printed on
+the screen, so that other users use it in the command line
+
+<p align="center">
+  <img src="https://i.imgur.com/0O61z4W.png">
+</p>
+
+Every time data is copied to a local clipboard that data should be replicated to all other
+clipboards. For instance, in the previous example data that is copied to the Clipboard3
+should be replicated to the other 3 clipboards:
+- Clipboard3 replicated data to Clipboard2
+- Clipboard2 Replicates data to Clipboard1
+- Clipboard2 replicates data to Clipboard4
 
 ### Contributors:
 	
