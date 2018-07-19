@@ -1,4 +1,4 @@
-# SystemProgramming
+# SystemProgramming -  Distributed Clipboard
 
 Distributed clipboard, implemented in C for System Programming course.
 
